@@ -308,13 +308,44 @@ Your saved configurations are preserved during updates.
 
 ### Basic Workflow
 
-1. **Set Ingredient Costs**: Enter the cost per unit for each ingredient
-2. **Define Drinks**: Click "Add New Drink" to create a drink
-   - Name your drink
-   - Add ingredients and specify amounts
+1. **Set Fixed Costs** (optional):
+   - Daily Cleaning Cost: Enter in € (fixed cost per day)
+   - Expected Products per Day: Number of products to distribute the cost
+
+2. **Set Ingredient Costs**: Enter prices per kilogram (kg) or liter (L)
+   - Solid ingredients: €/kg (Coffee Beans, Chocolate Powder, Sugar)
+   - Liquid ingredients: €/L (Milk, Water, Vanilla Syrup)
+
+3. **Define Drinks**: Click "Add New Drink" to create a drink
+   - Name your drink (e.g., "Cappuccino")
+   - Select ingredients from dropdown
+   - Enter amounts in grams (g) or milliliters (ml)
    - Add multiple ingredients as needed
-3. **Calculate**: Click "Calculate Costs" to see the breakdown
-4. **Download Report**: Click "Download PDF Report" to get a professional PDF
+
+4. **Calculate**: Click "Calculate Costs" to see the breakdown
+   - View ingredient costs
+   - See cleaning cost per product (if set)
+   - Get total cost per drink
+
+5. **Download Report**: Click "Download PDF Report" to get a professional PDF
+
+### Example
+
+**Setting up ingredients:**
+- Coffee Beans: €30.00/kg
+- Milk: €1.20/L
+- Daily Cleaning Cost: €50.00
+- Expected Products per Day: 200
+
+**Creating a Cappuccino:**
+- Coffee Beans: 18 g
+- Milk: 150 ml
+
+**Result:**
+- Coffee cost: €30/kg × 0.018 kg = €0.54
+- Milk cost: €1.20/L × 0.15 L = €0.18
+- Cleaning cost: €50/200 = €0.25
+- **Total: €0.97 per Cappuccino**
 
 ### Configuration Management
 
