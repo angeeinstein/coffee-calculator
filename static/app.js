@@ -51,6 +51,16 @@ function addDrink() {
         </div>
         <button class="btn" onclick="addIngredientRow(${drinkCounter})">+ Add Ingredient</button>
         
+        <div class="tea-bags-section" style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+            <h4 style="margin-bottom: 10px; color: #27ae60;">🍵 Tea Bags</h4>
+            <div id="tea-bag-items-${drinkCounter}" style="display: grid; gap: 10px;">
+                <!-- Tea bag selections will be added here -->
+            </div>
+            <button class="btn" onclick="addTeaBagToDrink(${drinkCounter})" style="margin-top: 10px; font-size: 0.9em; background: linear-gradient(135deg, #27ae60 0%, #229954 100%);">
+                ➕ Add Tea Bag
+            </button>
+        </div>
+        
         <div class="custom-items-section" style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
             <h4 style="margin-bottom: 10px; color: #667eea;">🍪 Custom Items (Cookies, etc.)</h4>
             <div id="custom-items-${drinkCounter}">
@@ -160,6 +170,21 @@ function collectData() {
             }
         });
         
+        // Collect tea bags for this drink
+        const drinkTeaBags = {};
+        const teaBagItemsContainer = document.getElementById(`tea-bag-items-${drinkId}`);
+        if (teaBagItemsContainer) {
+            teaBagItemsContainer.querySelectorAll('.tea-bag-drink-row').forEach(row => {
+                const select = row.querySelector('.tea-bag-select');
+                const quantity = parseInt(row.querySelector('.tea-bag-quantity').value) || 0;
+                const teaBagName = select.value;
+                
+                if (teaBagName && quantity > 0) {
+                    drinkTeaBags[teaBagName] = quantity;
+                }
+            });
+        }
+        
         // Collect custom items for this drink
         const customItems = [];
         const customItemsContainer = document.getElementById(`custom-items-${drinkId}`);
@@ -174,11 +199,11 @@ function collectData() {
             });
         }
         
-        if (Object.keys(drinkIngredients).length > 0 || customItems.length > 0) {
+        if (Object.keys(drinkIngredients).length > 0 || Object.keys(drinkTeaBags).length > 0 || customItems.length > 0) {
             drinks.push({
                 name: drinkName,
                 ingredients: drinkIngredients,
-                tea_bags: {}, // Will be added if needed
+                tea_bags: drinkTeaBags,
                 custom_items: customItems
             });
         }
@@ -510,6 +535,58 @@ async function loadConfiguration(configId) {
                     `;
                     ingredientsContainer.appendChild(row);
                 });
+                
+                // Load tea bags if any
+                if (drink.tea_bags && Object.keys(drink.tea_bags).length > 0) {
+                    const teaBagItemsContainer = document.getElementById(`tea-bag-items-${drinkId}`);
+                    if (teaBagItemsContainer) {
+                        Object.entries(drink.tea_bags).forEach(([teaBagName, quantity]) => {
+                            const div = document.createElement('div');
+                            div.className = 'tea-bag-drink-row';
+                            div.style.cssText = 'display: flex; gap: 10px; align-items: center; background: #e8f5e9; padding: 10px; border-radius: 8px; margin-bottom: 10px;';
+                            
+                            const teaBagNames = Object.keys(teaBags);
+                            div.innerHTML = `
+                                <select class="tea-bag-select" style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #27ae60;">
+                                    <option value="">Select tea bag</option>
+                                    ${teaBagNames.map(name => `<option value="${name}" ${name === teaBagName ? 'selected' : ''}>${name}</option>`).join('')}
+                                </select>
+                                <input type="number" 
+                                       placeholder="Quantity" 
+                                       class="tea-bag-quantity"
+                                       value="${quantity}"
+                                       min="1"
+                                       step="1"
+                                       style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #27ae60;">
+                                <span class="tea-bag-cost" style="flex: 1; padding: 8px; font-weight: 600; color: #27ae60;">€${(teaBags[teaBagName] * quantity).toFixed(2)}</span>
+                                <button onclick="this.parentElement.remove()" 
+                                        style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
+                                    ✕
+                                </button>
+                            `;
+                            teaBagItemsContainer.appendChild(div);
+                            
+                            // Add event listeners for cost calculation
+                            const select = div.querySelector('.tea-bag-select');
+                            const quantityInput = div.querySelector('.tea-bag-quantity');
+                            const costSpan = div.querySelector('.tea-bag-cost');
+                            
+                            const updateCost = () => {
+                                const selectedTeaBag = select.value;
+                                const qty = parseInt(quantityInput.value) || 0;
+                                if (selectedTeaBag && teaBags[selectedTeaBag]) {
+                                    const cost = teaBags[selectedTeaBag] * qty;
+                                    costSpan.textContent = `€${cost.toFixed(2)}`;
+                                } else {
+                                    costSpan.textContent = '€0.00';
+                                }
+                            };
+                            
+                            select.addEventListener('change', updateCost);
+                            quantityInput.addEventListener('input', updateCost);
+                        });
+                    }
+                }
                 
                 // Load custom items if any
                 if (drink.custom_items && drink.custom_items.length > 0) {
@@ -868,6 +945,69 @@ async function deleteTeaBag(id) {
 
 function addTeaBag() {
     addTeaBagInput();
+}
+
+// ============================================
+// TEA BAGS IN DRINKS
+// ============================================
+function addTeaBagToDrink(drinkId) {
+    const container = document.getElementById(`tea-bag-items-${drinkId}`);
+    if (!container) return;
+    
+    // Get available tea bags
+    const teaBagNames = Object.keys(teaBags);
+    
+    if (teaBagNames.length === 0) {
+        alert('Please add tea bags first in the "Tea Bags & Per-Unit Items" section above!');
+        return;
+    }
+    
+    const itemId = `teabag-drink-${drinkId}-${Date.now()}`;
+    
+    const div = document.createElement('div');
+    div.className = 'tea-bag-drink-row';
+    div.dataset.itemId = itemId;
+    div.style.cssText = 'display: flex; gap: 10px; align-items: center; background: #e8f5e9; padding: 10px; border-radius: 8px;';
+    
+    div.innerHTML = `
+        <select class="tea-bag-select" style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #27ae60;">
+            <option value="">Select tea bag</option>
+            ${teaBagNames.map(name => `<option value="${name}">${name}</option>`).join('')}
+        </select>
+        <input type="number" 
+               placeholder="Quantity" 
+               class="tea-bag-quantity"
+               value="1"
+               min="1"
+               step="1"
+               style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #27ae60;">
+        <span class="tea-bag-cost" style="flex: 1; padding: 8px; font-weight: 600; color: #27ae60;">€0.00</span>
+        <button onclick="this.parentElement.remove()" 
+                style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
+            ✕
+        </button>
+    `;
+    
+    container.appendChild(div);
+    
+    // Add event listeners for cost calculation
+    const select = div.querySelector('.tea-bag-select');
+    const quantityInput = div.querySelector('.tea-bag-quantity');
+    const costSpan = div.querySelector('.tea-bag-cost');
+    
+    const updateCost = () => {
+        const selectedTeaBag = select.value;
+        const quantity = parseInt(quantityInput.value) || 0;
+        if (selectedTeaBag && teaBags[selectedTeaBag]) {
+            const cost = teaBags[selectedTeaBag] * quantity;
+            costSpan.textContent = `€${cost.toFixed(2)}`;
+        } else {
+            costSpan.textContent = '€0.00';
+        }
+    };
+    
+    select.addEventListener('change', updateCost);
+    quantityInput.addEventListener('input', updateCost);
 }
 
 // ============================================
