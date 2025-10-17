@@ -18,7 +18,7 @@ A web application for calculating the cost of coffee drinks based on ingredient 
 
 ### One-Command Installation
 
-1. **Clone or upload the repository to your Ubuntu server**:
+1. **Clone the repository to your Ubuntu server**:
 ```bash
 git clone https://github.com/angeeinstein/coffee-calculator.git
 cd coffee-calculator
@@ -39,6 +39,26 @@ That's it! The script will:
 - Configure automatic startup on boot
 
 The application will be running at `http://localhost:5000` or `http://your-server-ip:5000`
+
+### One-Command Update
+
+To update to the latest version, simply run the install script again:
+
+```bash
+cd coffee-calculator
+sudo ./install.sh
+```
+
+The script automatically:
+- ✅ Detects that it's an update (not a fresh install)
+- ✅ Creates a database backup
+- ✅ Pulls the latest code from git
+- ✅ Updates all dependencies
+- ✅ Migrates the database schema
+- ✅ Restarts the service
+- ✅ Preserves all your saved configurations
+
+**No manual git pull needed!** Just run `./install.sh` and everything is updated automatically.
 
 ## What the Installation Script Does
 
@@ -217,7 +237,29 @@ sudo systemctl start cloudflared
 sudo systemctl enable cloudflared
 ```
 
-## Managing the Service
+## Managing the Application
+
+### Update or Uninstall
+
+When you run the install script on an existing installation, you'll get an interactive menu:
+
+```bash
+cd coffee-calculator
+sudo ./install.sh
+```
+
+You'll see:
+```
+Existing installation detected!
+
+What would you like to do?
+
+1) Update to latest version (pulls code, updates dependencies, restarts service)
+2) Complete removal (uninstall service, remove all files and data)
+3) Cancel
+```
+
+### Service Management
 
 After installation, you can manage the application using systemd:
 
@@ -246,19 +288,21 @@ sudo systemctl enable coffee-calculator
 
 ## Updating the Application
 
-To update to the latest version:
+To update to the latest version, just run the install script again:
 
 ```bash
 cd /path/to/coffee-calculator
-
-# Pull latest changes
-git pull
-
-# Run the installation script again
 sudo ./install.sh
 ```
 
-The script will preserve your database and configurations.
+That's it! The script automatically:
+- Detects it's an update
+- Backs up your database
+- Pulls the latest code from git
+- Updates dependencies
+- Restarts the service
+
+Your saved configurations are preserved during updates.
 
 ## Usage
 
@@ -387,9 +431,27 @@ sudo systemctl restart coffee-calculator
   - Monitoring logs for unusual activity
   - Keeping system and dependencies updated
 
+## Uninstalling
+
+To completely remove the application:
+
+```bash
+cd coffee-calculator
+sudo ./install.sh
+# Select option 2 (Complete removal)
+```
+
+The uninstall process will:
+1. Stop and remove the systemd service
+2. Remove the Python virtual environment
+3. **Ask if you want to delete the database** (your configurations)
+4. **Ask if you want to delete all application files**
+
+This gives you full control over what gets removed.
+
 ## Database Backup
 
-To backup your configurations:
+The update process automatically creates database backups. To manually backup:
 
 ```bash
 # Backup database
@@ -400,6 +462,8 @@ sudo cp ~/coffee_calculator_backup_YYYYMMDD.db /path/to/coffee-calculator/data/c
 sudo chown your-user:your-user /path/to/coffee-calculator/data/coffee_calculator.db
 sudo systemctl restart coffee-calculator
 ```
+
+**Note:** Updates automatically create timestamped backups in the `data/` directory.
 
 ## License
 
