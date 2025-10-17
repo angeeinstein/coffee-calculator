@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Cost Calculator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .app-wrapper {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            gap: 20px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .sidebar h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .sidebar-actions {
+            margin-bottom: 20px;
+        }
+
+        .sidebar-btn {
+            width: 100%;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+
+        .config-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .config-item {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .config-item:hover {
+            border-color: #667eea;
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .config-item.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+        }
+
+        .config-name {
+            font-weight: 600;
+            color: #333;
+            flex: 1;
+        }
+
+        .config-delete {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.3s;
+        }
+
+        .config-delete:hover {
+            background: #c0392b;
+        }
+
+        .config-date {
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .container {
+            flex: 1;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .modal-btn-secondary {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .ingredient-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .input-group input {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #2ecc71;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            padding: 8px 15px;
+            font-size: 0.9em;
+        }
+
+        .drink-card {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .drink-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .drink-header input {
+            flex: 1;
+            margin-right: 10px;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .ingredient-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: end;
+        }
+
+        .results-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 30px;
+        }
+
+        .result-card {
+            background: white;
+            border-left: 5px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        .result-total {
+            font-size: 1.8em;
+            color: #2ecc71;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .breakdown-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .breakdown-table th,
+        .breakdown-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .breakdown-table th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+
+        .breakdown-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .current-config-name {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .current-config-name strong {
+            color: #667eea;
+        }
+
+        @media (max-width: 1024px) {
+            .app-wrapper {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                position: static;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8em;
+            }
+
+            .ingredient-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .ingredient-row {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>💾 Saved Configs</h2>
+            <div class="sidebar-actions">
+                <button class="btn sidebar-btn" onclick="showSaveModal()">💾 Save Current</button>
+                <button class="btn sidebar-btn" onclick="newConfiguration()">📝 New Config</button>
+            </div>
+            <div id="current-config" class="current-config-name" style="display: none;">
+                <strong>Current:</strong> <span id="current-config-name"></span>
+            </div>
+            <div class="config-list" id="config-list">
+                <p style="color: #999; text-align: center; padding: 20px;">No saved configurations yet</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container">
+            <header>
+                <h1>☕ Coffee Cost Calculator</h1>
+                <p>Calculate the cost of your coffee drinks with precision</p>
+            </header>
+
+            <div class="content">
+            <!-- Ingredients Section -->
+            <div class="section">
+                <h2>📦 Ingredient Costs</h2>
+                <p style="margin-bottom: 15px; color: #666;">Enter the cost per unit for each ingredient (e.g., $ per gram, $ per ml)</p>
+                <div class="ingredient-grid">
+                    <div class="input-group">
+                        <label for="coffee_beans">Coffee Beans ($/unit)</label>
+                        <input type="number" id="coffee_beans" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="milk">Milk ($/unit)</label>
+                        <input type="number" id="milk" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="chocolate_powder">Chocolate Powder ($/unit)</label>
+                        <input type="number" id="chocolate_powder" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="sugar">Sugar ($/unit)</label>
+                        <input type="number" id="sugar" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="water">Water ($/unit)</label>
+                        <input type="number" id="water" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="vanilla_syrup">Vanilla Syrup ($/unit)</label>
+                        <input type="number" id="vanilla_syrup" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drinks Section -->
+            <div class="section">
+                <h2>🍵 Define Your Drinks</h2>
+                <p style="margin-bottom: 15px; color: #666;">Create drinks and specify how many units of each ingredient they use</p>
+                <div id="drinks-container"></div>
+                <button class="btn" onclick="addDrink()">+ Add New Drink</button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="btn" onclick="calculateCosts()">💰 Calculate Costs</button>
+                <button class="btn btn-secondary hidden" id="download-pdf-btn" onclick="downloadPDF()">📄 Download PDF Report</button>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="results-section hidden">
+                <h2 style="color: #667eea; margin-bottom: 20px;">📊 Cost Breakdown</h2>
+                <div id="results-container"></div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Save Configuration Modal -->
+    <div id="saveModal" class="modal">
+        <div class="modal-content">
+            <h3>💾 Save Configuration</h3>
+            <div class="input-group">
+                <label for="config-name-input">Configuration Name</label>
+                <input type="text" id="config-name-input" placeholder="e.g., Summer Menu" />
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-primary" onclick="saveConfiguration()">Save</button>
+                <button class="modal-btn modal-btn-secondary" onclick="closeSaveModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
