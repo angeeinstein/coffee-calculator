@@ -14,6 +14,14 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# Disable caching for static files to prevent outdated JavaScript/CSS
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
+
 # Database configuration
 DATABASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATABASE_PATH = os.path.join(DATABASE_DIR, 'coffee_calculator.db')
