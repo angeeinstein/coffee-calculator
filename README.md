@@ -329,23 +329,43 @@ Your saved configurations are preserved during updates.
 
 5. **Download Report**: Click "Download PDF Report" to get a professional PDF
 
-### Example
+### Example Calculation
 
-**Setting up ingredients:**
+**Step 1: Set up ingredient prices** (per kg or L):
 - Coffee Beans: €30.00/kg
 - Milk: €1.20/L
+
+**Step 2: Set fixed costs** (optional):
 - Daily Cleaning Cost: €50.00
 - Expected Products per Day: 200
+- Cleaning cost per product: €50.00 ÷ 200 = €0.25
 
-**Creating a Cappuccino:**
+**Step 3: Create a Cappuccino** (amounts in g or ml):
 - Coffee Beans: 18 g
 - Milk: 150 ml
 
-**Result:**
-- Coffee cost: €30/kg × 0.018 kg = €0.54
-- Milk cost: €1.20/L × 0.15 L = €0.18
-- Cleaning cost: €50/200 = €0.25
-- **Total: €0.97 per Cappuccino**
+**Step 4: Calculation (automatic):**
+```
+Coffee Beans:
+  - You enter: 18 g
+  - System converts: 18 g ÷ 1000 = 0.018 kg
+  - Cost: €30.00/kg × 0.018 kg = €0.54
+
+Milk:
+  - You enter: 150 ml
+  - System converts: 150 ml ÷ 1000 = 0.15 L
+  - Cost: €1.20/L × 0.15 L = €0.18
+
+Ingredient Subtotal: €0.54 + €0.18 = €0.72
+Cleaning Cost: €0.25
+───────────────────────────────────────────
+Total Cost: €0.97 per Cappuccino
+```
+
+**Important:** 
+- Prices are entered in €/kg or €/L
+- Amounts are entered in g or ml
+- The system automatically converts g→kg and ml→L for calculations
 
 ### Configuration Management
 

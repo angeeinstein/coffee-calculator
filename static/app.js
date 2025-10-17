@@ -173,6 +173,15 @@ async function calculateCosts() {
         return;
     }
     
+    // Debug output
+    console.log('=== Calculation Data ===');
+    console.log('Fixed Costs:', {
+        cleaning_cost: data.cleaning_cost,
+        products_per_day: data.products_per_day
+    });
+    console.log('Ingredient Prices (€/kg or €/L):', data.ingredients);
+    console.log('Drinks:', data.drinks);
+    
     try {
         const response = await fetch('/api/calculate', {
             method: 'POST',
@@ -184,8 +193,13 @@ async function calculateCosts() {
         
         const result = await response.json();
         
+        console.log('=== Calculation Results ===');
+        console.log('Results from backend:', result.results);
+        
         if (result.success) {
             calculationResults = {
+                cleaning_cost: data.cleaning_cost,
+                products_per_day: data.products_per_day,
                 ingredients: data.ingredients,
                 drinks: data.drinks,
                 results: result.results
