@@ -17,6 +17,7 @@ const ingredients = [
 document.addEventListener('DOMContentLoaded', function() {
     addDrink();
     loadConfigurations();
+    loadTeaBags();
 });
 
 function addDrink() {
@@ -49,6 +50,16 @@ function addDrink() {
             </div>
         </div>
         <button class="btn" onclick="addIngredientRow(${drinkCounter})">+ Add Ingredient</button>
+        
+        <div class="custom-items-section" style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+            <h4 style="margin-bottom: 10px; color: #667eea;">🍪 Custom Items (Cookies, etc.)</h4>
+            <div id="custom-items-${drinkCounter}">
+                <!-- Custom items will be added here -->
+            </div>
+            <button class="btn" onclick="addCustomItem(${drinkCounter})" style="margin-top: 10px; font-size: 0.9em; background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">
+                ➕ Add Custom Item
+            </button>
+        </div>
     `;
     
     drinksContainer.appendChild(drinkCard);
@@ -149,10 +160,26 @@ function collectData() {
             }
         });
         
-        if (Object.keys(drinkIngredients).length > 0) {
+        // Collect custom items for this drink
+        const customItems = [];
+        const customItemsContainer = document.getElementById(`custom-items-${drinkId}`);
+        if (customItemsContainer) {
+            customItemsContainer.querySelectorAll('.custom-item-row').forEach(row => {
+                const name = row.querySelector('.custom-item-name').value.trim();
+                const cost = parseFloat(row.querySelector('.custom-item-cost').value) || 0;
+                
+                if (name && cost > 0) {
+                    customItems.push({ name, cost });
+                }
+            });
+        }
+        
+        if (Object.keys(drinkIngredients).length > 0 || customItems.length > 0) {
             drinks.push({
                 name: drinkName,
-                ingredients: drinkIngredients
+                ingredients: drinkIngredients,
+                tea_bags: {}, // Will be added if needed
+                custom_items: customItems
             });
         }
     });
@@ -161,6 +188,7 @@ function collectData() {
         cleaning_cost: cleaningCost,
         products_per_day: productsPerDay,
         ingredients: ingredientCosts,
+        tea_bags: teaBags,
         drinks: drinks
     };
 }
@@ -188,6 +216,7 @@ async function calculateCosts() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify(data)
         });
         
@@ -238,11 +267,28 @@ function displayResults(results) {
         `;
         
         result.breakdown.forEach(item => {
+            let amountDisplay = '';
+            let unitCostDisplay = '';
+            
+            if (item.type === 'per_unit') {
+                // Tea bags or per-unit items
+                amountDisplay = `${item.amount} units`;
+                unitCostDisplay = `€${item.unit_cost.toFixed(2)}/unit`;
+            } else if (item.type === 'custom') {
+                // Custom items
+                amountDisplay = `1 item`;
+                unitCostDisplay = `€${item.unit_cost.toFixed(2)}`;
+            } else {
+                // Bulk ingredients (default)
+                amountDisplay = `${(item.amount * 1000).toFixed(1)} ${getUnitForIngredient(item.ingredient)}`;
+                unitCostDisplay = `€${item.unit_cost.toFixed(2)}/${getBaseUnitForIngredient(item.ingredient)}`;
+            }
+            
             breakdownHTML += `
                 <tr>
                     <td>${item.ingredient.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
-                    <td>${(item.amount * 1000).toFixed(1)} ${getUnitForIngredient(item.ingredient)}</td>
-                    <td>€${item.unit_cost.toFixed(2)}/${getBaseUnitForIngredient(item.ingredient)}</td>
+                    <td>${amountDisplay}</td>
+                    <td>${unitCostDisplay}</td>
                     <td><strong>€${item.total_cost.toFixed(2)}</strong></td>
                 </tr>
             `;
@@ -313,6 +359,7 @@ async function downloadPDF() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify(calculationResults)
         });
         
@@ -338,7 +385,9 @@ async function downloadPDF() {
 
 async function loadConfigurations() {
     try {
-        const response = await fetch('/api/configs');
+        const response = await fetch('/api/configs', {
+            credentials: 'include'
+        });
         const result = await response.json();
         
         if (result.success) {
@@ -366,15 +415,26 @@ function displayConfigurations(configs) {
             configItem.classList.add('active');
         }
         
+        // Mark shared configs
+        if (config.access_type === 'shared') {
+            configItem.classList.add('shared');
+        }
+        
         const date = new Date(config.updated_at);
         const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
+        const ownerLabel = config.owner_name ? `<span class="config-owner">by ${escapeHtml(config.owner_name)}</span>` : '';
+        const shareIcon = config.access_type === 'shared' ? '🔗 ' : '';
+        
         configItem.innerHTML = `
             <div style="flex: 1;" onclick="loadConfiguration(${config.id})">
-                <div class="config-name">${escapeHtml(config.name)}</div>
+                <div class="config-name">${shareIcon}${escapeHtml(config.name)} ${ownerLabel}</div>
                 <div class="config-date">${dateStr}</div>
             </div>
-            <button class="config-delete" onclick="event.stopPropagation(); deleteConfiguration(${config.id})">🗑️</button>
+            <div class="config-actions">
+                ${config.access_type === 'owner' ? `<button class="config-share" onclick="event.stopPropagation(); showShareModal(${config.id}, '${escapeHtml(config.name).replace(/'/g, "\\'")}')">📤</button>` : ''}
+                ${config.can_edit || config.access_type === 'owner' ? `<button class="config-delete" onclick="event.stopPropagation(); deleteConfiguration(${config.id})">🗑️</button>` : ''}
+            </div>
         `;
         
         configList.appendChild(configItem);
@@ -383,7 +443,9 @@ function displayConfigurations(configs) {
 
 async function loadConfiguration(configId) {
     try {
-        const response = await fetch(`/api/configs/${configId}`);
+        const response = await fetch(`/api/configs/${configId}`, {
+            credentials: 'include'
+        });
         const result = await response.json();
         
         if (result.success) {
@@ -448,6 +510,36 @@ async function loadConfiguration(configId) {
                     `;
                     ingredientsContainer.appendChild(row);
                 });
+                
+                // Load custom items if any
+                if (drink.custom_items && drink.custom_items.length > 0) {
+                    const customItemsContainer = document.getElementById(`custom-items-${drinkId}`);
+                    if (customItemsContainer) {
+                        drink.custom_items.forEach(item => {
+                            const div = document.createElement('div');
+                            div.className = 'custom-item-row';
+                            div.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px;';
+                            div.innerHTML = `
+                                <input type="text" 
+                                       placeholder="Item name (e.g., Cookie)" 
+                                       class="custom-item-name"
+                                       value="${escapeHtml(item.name)}"
+                                       style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                                <input type="number" 
+                                       placeholder="Cost (€)" 
+                                       class="custom-item-cost"
+                                       value="${item.cost}"
+                                       step="0.01"
+                                       style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                                <button onclick="this.parentElement.remove()" 
+                                        style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
+                                    ✕
+                                </button>
+                            `;
+                            customItemsContainer.appendChild(div);
+                        });
+                    }
+                }
             });
             
             // Reload configurations to update active state
@@ -518,6 +610,7 @@ async function saveConfiguration() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify(payload)
         });
         
@@ -549,7 +642,8 @@ async function deleteConfiguration(configId) {
     
     try {
         const response = await fetch(`/api/configs/${configId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
         });
         
         const result = await response.json();
@@ -627,9 +721,13 @@ function escapeHtml(text) {
 
 // Close modal when clicking outside
 window.onclick = function(event) {
-    const modal = document.getElementById('saveModal');
-    if (event.target === modal) {
+    const saveModal = document.getElementById('saveModal');
+    const shareModal = document.getElementById('shareModal');
+    if (event.target === saveModal) {
         closeSaveModal();
+    }
+    if (event.target === shareModal) {
+        closeShareModal();
     }
 }
 
@@ -642,3 +740,267 @@ document.addEventListener('keypress', function(event) {
         }
     }
 });
+
+// ============================================
+// LOGOUT FUNCTIONALITY
+// ============================================
+async function logout() {
+    try {
+        const response = await fetch('/api/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            window.location.href = '/login';
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        alert('Error logging out. Please try again.');
+    }
+}
+
+// ============================================
+// TEA BAG MANAGEMENT
+// ============================================
+let teaBags = {}; // Store tea bag data
+
+async function loadTeaBags() {
+    try {
+        const response = await fetch('/api/tea-bags', {
+            credentials: 'include'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            teaBags = {};
+            const container = document.getElementById('tea-bag-inputs');
+            container.innerHTML = '';
+            
+            data.tea_bags.forEach(bag => {
+                teaBags[bag.name] = bag.cost_per_unit;
+                addTeaBagInput(bag.name, bag.cost_per_unit, bag.id);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading tea bags:', error);
+    }
+}
+
+function addTeaBagInput(name = '', cost = '', id = null) {
+    const container = document.getElementById('tea-bag-inputs');
+    const teaBagId = id || 'new';
+    
+    const div = document.createElement('div');
+    div.className = 'tea-bag-item';
+    div.dataset.teabagId = teaBagId;
+    div.style.cssText = 'display: flex; gap: 10px; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px;';
+    
+    div.innerHTML = `
+        <input type="text" 
+               placeholder="Tea Bag Name (e.g., Earl Grey)" 
+               value="${name}"
+               onchange="saveTeaBag(this)"
+               style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <input type="number" 
+               placeholder="0.00" 
+               value="${cost}"
+               step="0.01"
+               onchange="saveTeaBag(this)"
+               style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <button onclick="deleteTeaBag('${teaBagId}')" 
+                style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 1.2em;">
+            🗑️
+        </button>
+    `;
+    
+    container.appendChild(div);
+}
+
+async function saveTeaBag(input) {
+    const container = input.closest('[data-teabag-id]');
+    const inputs = container.querySelectorAll('input');
+    const name = inputs[0].value.trim();
+    const cost = parseFloat(inputs[1].value) || 0;
+    const id = container.dataset.teabagId !== 'new' ? container.dataset.teabagId : null;
+    
+    if (!name || cost <= 0) return;
+    
+    try {
+        const response = await fetch('/api/tea-bags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ id: id === 'new' ? null : parseInt(id), name, cost_per_unit: cost })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            teaBags[name] = cost;
+            loadTeaBags(); // Reload to get proper IDs
+        }
+    } catch (error) {
+        console.error('Error saving tea bag:', error);
+    }
+}
+
+async function deleteTeaBag(id) {
+    if (!confirm('Delete this tea bag?')) return;
+    
+    if (id === 'new') {
+        loadTeaBags();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/tea-bags/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            loadTeaBags();
+        }
+    } catch (error) {
+        console.error('Error deleting tea bag:', error);
+    }
+}
+
+function addTeaBag() {
+    addTeaBagInput();
+}
+
+// ============================================
+// CUSTOM ITEMS PER DRINK
+// ============================================
+function addCustomItem(drinkId) {
+    const container = document.getElementById(`custom-items-${drinkId}`);
+    if (!container) return;
+    
+    const itemId = `custom-${drinkId}-${Date.now()}`;
+    
+    const div = document.createElement('div');
+    div.className = 'custom-item-row';
+    div.dataset.itemId = itemId;
+    div.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px;';
+    
+    div.innerHTML = `
+        <input type="text" 
+               placeholder="Item name (e.g., Cookie)" 
+               class="custom-item-name"
+               style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <input type="number" 
+               placeholder="Cost (€)" 
+               class="custom-item-cost"
+               step="0.01"
+               style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <button onclick="this.parentElement.remove()" 
+                style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
+            ✕
+        </button>
+    `;
+    
+    container.appendChild(div);
+}
+
+// ============================================
+// SHARING FUNCTIONALITY
+// ============================================
+let currentShareConfigId = null;
+
+function showShareModal(configId, configName) {
+    currentShareConfigId = configId;
+    const modal = document.getElementById('shareModal');
+    document.getElementById('share-config-name').textContent = configName;
+    
+    loadSharedUsers(configId);
+    modal.style.display = 'flex';
+}
+
+function closeShareModal() {
+    document.getElementById('shareModal').style.display = 'none';
+    document.getElementById('shareEmail').value = '';
+    document.getElementById('shareCanEdit').checked = false;
+    currentShareConfigId = null;
+}
+
+async function loadSharedUsers(configId) {
+    try {
+        const response = await fetch(`/api/configs/${configId}/shared-users`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('sharedUsersList');
+            if (data.shared_users.length === 0) {
+                container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Not shared with anyone yet</p>';
+            } else {
+                container.innerHTML = '<h4 style="margin-bottom: 10px; color: #333;">Shared with:</h4>';
+                data.shared_users.forEach(user => {
+                    const userDiv = document.createElement('div');
+                    userDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: white; border-radius: 6px; margin-bottom: 5px;';
+                    userDiv.innerHTML = `
+                        <span style="color: #333;"><strong>${escapeHtml(user.name)}</strong> (${escapeHtml(user.email)}) - ${user.can_edit ? '✏️ Can Edit' : '👁️ View Only'}</span>
+                        <button onclick="unshareWith(${configId}, ${user.user_id})" 
+                                style="background: #e74c3c; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                            Remove
+                        </button>
+                    `;
+                    container.appendChild(userDiv);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading shared users:', error);
+    }
+}
+
+async function shareConfiguration() {
+    const email = document.getElementById('shareEmail').value.trim();
+    const canEdit = document.getElementById('shareCanEdit').checked;
+    
+    if (!email) {
+        alert('Please enter an email address');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/configs/${currentShareConfigId}/share`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email, can_edit: canEdit })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Configuration shared successfully!');
+            document.getElementById('shareEmail').value = '';
+            loadSharedUsers(currentShareConfigId);
+        } else {
+            alert(data.error || 'Failed to share configuration');
+        }
+    } catch (error) {
+        console.error('Error sharing configuration:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+async function unshareWith(configId, userId) {
+    if (!confirm('Remove sharing access for this user?')) return;
+    
+    try {
+        const response = await fetch(`/api/configs/${configId}/unshare/${userId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            loadSharedUsers(configId);
+        }
+    } catch (error) {
+        console.error('Error removing share:', error);
+    }
+}

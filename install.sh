@@ -322,6 +322,18 @@ chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${INSTALL_DIR}"
 chmod -R 755 "${INSTALL_DIR}"
 chmod 775 "${DATA_DIR}"
 
+# Generate SECRET_KEY if not exists
+SECRET_KEY_FILE="${INSTALL_DIR}/.secret_key"
+if [ ! -f "${SECRET_KEY_FILE}" ]; then
+    print_info "Generating SECRET_KEY for Flask sessions..."
+    python3 -c "import secrets; print(secrets.token_hex(32))" > "${SECRET_KEY_FILE}"
+    chmod 600 "${SECRET_KEY_FILE}"
+    chown "${SERVICE_USER}:${SERVICE_GROUP}" "${SECRET_KEY_FILE}"
+    print_success "SECRET_KEY generated and saved to .secret_key"
+fi
+
+SECRET_KEY=$(cat "${SECRET_KEY_FILE}")
+
 # Create systemd service file
 print_info "Creating systemd service..."
 cat > /etc/systemd/system/${APP_NAME}.service << EOF
@@ -335,6 +347,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${INSTALL_DIR}
 Environment="PATH=${VENV_DIR}/bin"
+Environment="SECRET_KEY=${SECRET_KEY}"
 ExecStart=${VENV_DIR}/bin/gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 --access-logfile - --error-logfile - app:app
 ExecReload=/bin/kill -s HUP \$MAINPID
 KillMode=mixed

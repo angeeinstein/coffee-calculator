@@ -106,10 +106,42 @@
             background: #c0392b;
         }
 
+        .config-share {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.3s;
+            margin-left: 5px;
+        }
+
+        .config-share:hover {
+            background: #2980b9;
+        }
+
+        .config-item.shared {
+            border-left: 4px solid #3498db;
+        }
+
+        .config-owner {
+            font-size: 0.75em;
+            color: #7f8c8d;
+            font-style: italic;
+            margin-left: 10px;
+        }
+
         .config-date {
             font-size: 0.75em;
             color: #666;
             margin-top: 5px;
+        }
+
+        .config-actions {
+            display: flex;
+            gap: 5px;
         }
 
         .container {
@@ -182,6 +214,37 @@
             color: white;
             padding: 30px;
             text-align: center;
+            position: relative;
+        }
+
+        .user-menu {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info {
+            font-size: 0.9em;
+            opacity: 0.95;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
         }
 
         header h1 {
@@ -604,6 +667,10 @@
         <!-- Main Content -->
         <div class="container">
             <header>
+                <div class="user-menu">
+                    <span class="user-info">👤 {{ user.name }}</span>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
                 <h1>☕ Coffee Cost Calculator</h1>
                 <p>Calculate the cost of your coffee drinks with precision</p>
             </header>
@@ -657,9 +724,21 @@
                 </div>
             </div>
 
+            <!-- Tea Bags Section -->
+            <div class="section">
+                <h2>🍵 Tea Bags & Per-Unit Items</h2>
+                <p style="margin-bottom: 15px; color: #666;">Enter the cost per tea bag or per-unit item</p>
+                <div id="tea-bag-inputs" style="display: grid; gap: 10px; margin-bottom: 15px;">
+                    <!-- Dynamically populated tea bags -->
+                </div>
+                <button class="btn" onclick="addTeaBag()" style="background: linear-gradient(135deg, #27ae60 0%, #229954 100%);">
+                    ➕ Add Tea Bag
+                </button>
+            </div>
+
             <!-- Drinks Section -->
             <div class="section">
-                <h2>🍵 Define Your Drinks</h2>
+                <h2>☕ Define Your Drinks</h2>
                 <p style="margin-bottom: 15px; color: #666;">Create drinks and specify amounts in grams (g) or milliliters (ml) for each ingredient</p>
                 <div id="drinks-container"></div>
                 <button class="btn" onclick="addDrink()">+ Add New Drink</button>
@@ -691,6 +770,35 @@
             <div class="modal-actions">
                 <button class="modal-btn modal-btn-primary" onclick="saveConfiguration()">Save</button>
                 <button class="modal-btn modal-btn-secondary" onclick="closeSaveModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Configuration Modal -->
+    <div id="shareModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: #667eea; margin-bottom: 20px;">🤝 Share Configuration</h2>
+            <p style="margin-bottom: 20px; color: #666;">Share "<span id="share-config-name" style="font-weight: 600; color: #333;"></span>" with another user</p>
+            
+            <div class="input-group" style="margin-bottom: 20px;">
+                <label for="shareEmail">User Email:</label>
+                <input type="email" id="shareEmail" placeholder="user@example.com" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+            </div>
+            
+            <div style="margin: 20px 0;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="shareCanEdit" style="margin-right: 8px; width: 18px; height: 18px;">
+                    <span>Allow editing</span>
+                </label>
+            </div>
+            
+            <div id="sharedUsersList" style="margin: 20px 0; max-height: 200px; overflow-y: auto; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                <!-- List of users already shared with -->
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-secondary" onclick="closeShareModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="shareConfiguration()">Share</button>
             </div>
         </div>
     </div>
