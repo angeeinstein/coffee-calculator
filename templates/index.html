@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="description" content="Coffee Cost Calculator - Calculate the cost of your coffee drinks with precision">
     <title>Coffee Cost Calculator</title>
     <style>
         * {
@@ -209,6 +210,18 @@
             padding-bottom: 10px;
         }
 
+        .section:first-of-type {
+            background: linear-gradient(135deg, rgba(230, 126, 34, 0.05), rgba(241, 196, 15, 0.05));
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid rgba(230, 126, 34, 0.2);
+        }
+
+        .section:first-of-type h2 {
+            color: #e67e22;
+            border-bottom-color: #e67e22;
+        }
+
         .ingredient-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -227,15 +240,19 @@
             color: #333;
         }
 
-        .input-group input {
+        .input-group input,
+        .input-group select {
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 1em;
             transition: border-color 0.3s;
+            width: 100%;
+            box-sizing: border-box;
         }
 
-        .input-group input:focus {
+        .input-group input:focus,
+        .input-group select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -251,11 +268,18 @@
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
             margin-top: 10px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
 
-        .btn:hover {
+        .btn:hover,
+        .btn:active {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .btn-secondary {
@@ -334,6 +358,14 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            overflow-x: auto;
+            display: block;
+        }
+
+        .breakdown-table thead,
+        .breakdown-table tbody {
+            display: table;
+            width: 100%;
         }
 
         .breakdown-table th,
@@ -341,12 +373,16 @@
             padding: 10px;
             text-align: left;
             border-bottom: 1px solid #e9ecef;
+            word-wrap: break-word;
         }
 
         .breakdown-table th {
             background: #667eea;
             color: white;
             font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .breakdown-table tr:hover {
@@ -383,20 +419,70 @@
             .sidebar {
                 width: 100%;
                 position: static;
+                margin-bottom: 20px;
+            }
+
+            .content {
+                padding: 20px;
             }
         }
 
         @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            header {
+                padding: 20px 15px;
+            }
+
             header h1 {
                 font-size: 1.8em;
             }
 
+            header p {
+                font-size: 0.95em;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            .section {
+                margin-bottom: 30px;
+            }
+
+            .section h2 {
+                font-size: 1.5em;
+            }
+
             .ingredient-grid {
                 grid-template-columns: 1fr;
+                gap: 12px;
             }
 
             .ingredient-row {
                 grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .ingredient-row .btn-danger {
+                margin-top: 5px;
+                width: 100%;
+            }
+
+            .drink-card {
+                padding: 15px;
+            }
+
+            .drink-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .drink-header input {
+                margin-right: 0;
+                margin-bottom: 10px;
             }
 
             .action-buttons {
@@ -405,6 +491,95 @@
 
             .btn {
                 width: 100%;
+            }
+
+            .sidebar {
+                padding: 15px;
+            }
+
+            .sidebar h2 {
+                font-size: 1.3em;
+            }
+
+            .modal-content {
+                width: 90%;
+                margin: 30% auto;
+                padding: 20px;
+            }
+
+            .results-section {
+                padding: 15px;
+            }
+
+            .result-card {
+                padding: 15px;
+            }
+
+            .result-card h3 {
+                font-size: 1.2em;
+            }
+
+            .result-total {
+                font-size: 1.5em;
+            }
+
+            .breakdown-table {
+                font-size: 0.9em;
+            }
+
+            .breakdown-table th,
+            .breakdown-table td {
+                padding: 8px 5px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 1.5em;
+            }
+
+            header p {
+                font-size: 0.9em;
+            }
+
+            .section h2 {
+                font-size: 1.3em;
+            }
+
+            .btn {
+                padding: 10px 20px;
+                font-size: 0.95em;
+            }
+
+            .input-group label {
+                font-size: 0.9em;
+            }
+
+            .input-group input,
+            .input-group select {
+                padding: 10px;
+                font-size: 0.95em;
+            }
+
+            .breakdown-table {
+                font-size: 0.85em;
+            }
+
+            .breakdown-table th,
+            .breakdown-table td {
+                padding: 6px 3px;
+            }
+
+            .config-item {
+                padding: 10px;
+            }
+
+            .config-name {
+                font-size: 0.95em;
+            }
+
+            .config-date {
+                font-size: 0.7em;
             }
         }
     </style>
@@ -434,33 +609,49 @@
             </header>
 
             <div class="content">
+            <!-- Fixed Costs Section -->
+            <div class="section">
+                <h2>🧹 Fixed Daily Costs</h2>
+                <p style="margin-bottom: 15px; color: #666;">Enter fixed costs that apply once per day</p>
+                <div class="ingredient-grid">
+                    <div class="input-group">
+                        <label for="cleaning_cost">Daily Cleaning Cost (€)</label>
+                        <input type="number" id="cleaning_cost" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="input-group">
+                        <label for="products_per_day">Expected Products per Day</label>
+                        <input type="number" id="products_per_day" step="1" min="1" placeholder="100">
+                    </div>
+                </div>
+            </div>
+
             <!-- Ingredients Section -->
             <div class="section">
                 <h2>📦 Ingredient Costs</h2>
-                <p style="margin-bottom: 15px; color: #666;">Enter the cost per unit for each ingredient (e.g., $ per gram, $ per ml)</p>
+                <p style="margin-bottom: 15px; color: #666;">Enter the cost per kilogram (kg) or liter (L) for each ingredient</p>
                 <div class="ingredient-grid">
                     <div class="input-group">
-                        <label for="coffee_beans">Coffee Beans ($/unit)</label>
+                        <label for="coffee_beans">Coffee Beans (€/kg)</label>
                         <input type="number" id="coffee_beans" step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="input-group">
-                        <label for="milk">Milk ($/unit)</label>
+                        <label for="milk">Milk (€/L)</label>
                         <input type="number" id="milk" step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="input-group">
-                        <label for="chocolate_powder">Chocolate Powder ($/unit)</label>
+                        <label for="chocolate_powder">Chocolate Powder (€/kg)</label>
                         <input type="number" id="chocolate_powder" step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="input-group">
-                        <label for="sugar">Sugar ($/unit)</label>
+                        <label for="sugar">Sugar (€/kg)</label>
                         <input type="number" id="sugar" step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="input-group">
-                        <label for="water">Water ($/unit)</label>
+                        <label for="water">Water (€/L)</label>
                         <input type="number" id="water" step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="input-group">
-                        <label for="vanilla_syrup">Vanilla Syrup ($/unit)</label>
+                        <label for="vanilla_syrup">Vanilla Syrup (€/L)</label>
                         <input type="number" id="vanilla_syrup" step="0.01" min="0" placeholder="0.00">
                     </div>
                 </div>
@@ -469,7 +660,7 @@
             <!-- Drinks Section -->
             <div class="section">
                 <h2>🍵 Define Your Drinks</h2>
-                <p style="margin-bottom: 15px; color: #666;">Create drinks and specify how many units of each ingredient they use</p>
+                <p style="margin-bottom: 15px; color: #666;">Create drinks and specify amounts in grams (g) or milliliters (ml) for each ingredient</p>
                 <div id="drinks-container"></div>
                 <button class="btn" onclick="addDrink()">+ Add New Drink</button>
             </div>

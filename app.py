@@ -30,12 +30,24 @@ def init_db():
         CREATE TABLE IF NOT EXISTS configurations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
+            cleaning_cost REAL DEFAULT 0,
+            products_per_day INTEGER DEFAULT 1,
             ingredients TEXT NOT NULL,
             drinks TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Check if we need to add the new columns to existing tables
+    cursor.execute("PRAGMA table_info(configurations)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    if 'cleaning_cost' not in columns:
+        cursor.execute('ALTER TABLE configurations ADD COLUMN cleaning_cost REAL DEFAULT 0')
+    
+    if 'products_per_day' not in columns:
+        cursor.execute('ALTER TABLE configurations ADD COLUMN products_per_day INTEGER DEFAULT 1')
     
     conn.commit()
     conn.close()
@@ -53,6 +65,11 @@ def calculate():
         data = request.json
         ingredients = data.get('ingredients', {})
         drinks = data.get('drinks', [])
+        cleaning_cost = data.get('cleaning_cost', 0)
+        products_per_day = data.get('products_per_day', 1)
+        
+        # Calculate cleaning cost per product
+        cleaning_cost_per_product = cleaning_cost / products_per_day if products_per_day > 0 else 0
         
         # Calculate cost for each drink
         results = []
@@ -72,9 +89,14 @@ def calculate():
                         'total_cost': round(cost, 2)
                     })
             
+            # Add cleaning cost to total
+            total_cost = drink_cost + cleaning_cost_per_product
+            
             results.append({
                 'name': drink.get('name'),
-                'total_cost': round(drink_cost, 2),
+                'total_cost': round(total_cost, 2),
+                'cleaning_cost_per_product': round(cleaning_cost_per_product, 2),
+                'total_cleaning_cost': round(cleaning_cost, 2),
                 'breakdown': breakdown
             })
         
@@ -93,6 +115,8 @@ def calculate():
 def generate_pdf():
     try:
         data = request.json
+        cleaning_cost = data.get('cleaning_cost', 0)
+        products_per_day = data.get('products_per_day', 1)
         ingredients = data.get('ingredients', {})
         drinks = data.get('drinks', [])
         results = data.get('results', [])
@@ -135,12 +159,43 @@ def generate_pdf():
         elements.append(date_text)
         elements.append(Spacer(1, 20))
         
+        # Fixed Costs Section
+        if cleaning_cost > 0:
+            elements.append(Paragraph("Fixed Daily Costs", heading_style))
+            
+            fixed_cost_data = [
+                ['Cost Type', 'Amount'],
+                ['Daily Cleaning Cost', f"€{cleaning_cost:.2f}"],
+                ['Expected Products per Day', str(int(products_per_day))],
+                ['Cleaning Cost per Product', f"€{(cleaning_cost / products_per_day):.2f}"]
+            ]
+            
+            fixed_cost_table = Table(fixed_cost_data, colWidths=[3*inch, 2*inch])
+            fixed_cost_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e67e22')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ]))
+            elements.append(fixed_cost_table)
+            elements.append(Spacer(1, 30))
+        
         # Ingredients Section
         elements.append(Paragraph("Ingredient Costs", heading_style))
         
+        # Define liquid ingredients
+        liquid_ingredients = ['milk', 'water', 'vanilla_syrup']
+        
         ingredient_data = [['Ingredient', 'Cost per Unit']]
         for name, cost in ingredients.items():
-            ingredient_data.append([name.replace('_', ' ').title(), f"${cost:.2f}"])
+            unit = 'L' if name in liquid_ingredients else 'kg'
+            ingredient_data.append([name.replace('_', ' ').title(), f"€{cost:.2f}/{unit}"])
         
         ingredient_table = Table(ingredient_data, colWidths=[3*inch, 2*inch])
         ingredient_table.setStyle(TableStyle([
@@ -163,19 +218,42 @@ def generate_pdf():
         
         for result in results:
             # Drink name
-            drink_name = Paragraph(f"<b>{result['name']}</b> - Total Cost: ${result['total_cost']:.2f}", 
+            drink_name = Paragraph(f"<b>{result['name']}</b> - Total Cost: €{result['total_cost']:.2f}", 
                                   styles['Heading3'])
             elements.append(drink_name)
             elements.append(Spacer(1, 6))
             
             # Breakdown table
-            breakdown_data = [['Ingredient', 'Amount (units)', 'Unit Cost', 'Total']]
+            breakdown_data = [['Item', 'Amount', 'Unit Cost', 'Total']]
+            
+            ingredient_subtotal = 0
             for item in result['breakdown']:
+                ingredient_name = item['ingredient']
+                amount_in_base = item['amount']
+                ingredient_subtotal += item['total_cost']
+                
+                # Convert to g/ml for display
+                if ingredient_name in liquid_ingredients:
+                    amount_display = f"{amount_in_base * 1000:.1f} ml"
+                    unit_display = "L"
+                else:
+                    amount_display = f"{amount_in_base * 1000:.1f} g"
+                    unit_display = "kg"
+                
                 breakdown_data.append([
-                    item['ingredient'].replace('_', ' ').title(),
-                    f"{item['amount']}",
-                    f"${item['unit_cost']:.2f}",
-                    f"${item['total_cost']:.2f}"
+                    ingredient_name.replace('_', ' ').title(),
+                    amount_display,
+                    f"€{item['unit_cost']:.2f}/{unit_display}",
+                    f"€{item['total_cost']:.2f}"
+                ])
+            
+            # Add cleaning cost row if present
+            if result.get('cleaning_cost_per_product', 0) > 0:
+                breakdown_data.append([
+                    'Daily Cleaning Cost',
+                    'Per product',
+                    f"€{result.get('total_cleaning_cost', 0):.2f}/day",
+                    f"€{result['cleaning_cost_per_product']:.2f}"
                 ])
             
             breakdown_table = Table(breakdown_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
@@ -254,7 +332,7 @@ def get_config(config_id):
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT id, name, ingredients, drinks, created_at, updated_at 
+            SELECT id, name, cleaning_cost, products_per_day, ingredients, drinks, created_at, updated_at 
             FROM configurations 
             WHERE id = ?
         ''', (config_id,))
@@ -268,10 +346,12 @@ def get_config(config_id):
                 'config': {
                     'id': row[0],
                     'name': row[1],
-                    'ingredients': json.loads(row[2]),
-                    'drinks': json.loads(row[3]),
-                    'created_at': row[4],
-                    'updated_at': row[5]
+                    'cleaning_cost': row[2] or 0,
+                    'products_per_day': row[3] or 1,
+                    'ingredients': json.loads(row[4]),
+                    'drinks': json.loads(row[5]),
+                    'created_at': row[6],
+                    'updated_at': row[7]
                 }
             })
         else:
@@ -292,6 +372,8 @@ def save_config():
     try:
         data = request.json
         name = data.get('name', '').strip()
+        cleaning_cost = data.get('cleaning_cost', 0)
+        products_per_day = data.get('products_per_day', 1)
         ingredients = data.get('ingredients', {})
         drinks = data.get('drinks', [])
         config_id = data.get('id')
@@ -309,9 +391,9 @@ def save_config():
             # Update existing configuration
             cursor.execute('''
                 UPDATE configurations 
-                SET name = ?, ingredients = ?, drinks = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, cleaning_cost = ?, products_per_day = ?, ingredients = ?, drinks = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            ''', (name, json.dumps(ingredients), json.dumps(drinks), config_id))
+            ''', (name, cleaning_cost, products_per_day, json.dumps(ingredients), json.dumps(drinks), config_id))
             
             if cursor.rowcount == 0:
                 conn.close()
@@ -325,9 +407,9 @@ def save_config():
             # Insert new configuration
             try:
                 cursor.execute('''
-                    INSERT INTO configurations (name, ingredients, drinks)
-                    VALUES (?, ?, ?)
-                ''', (name, json.dumps(ingredients), json.dumps(drinks)))
+                    INSERT INTO configurations (name, cleaning_cost, products_per_day, ingredients, drinks)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (name, cleaning_cost, products_per_day, json.dumps(ingredients), json.dumps(drinks)))
                 
                 result_id = cursor.lastrowid
             except sqlite3.IntegrityError:

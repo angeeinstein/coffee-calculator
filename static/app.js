@@ -36,14 +36,14 @@ function addDrink() {
             <div class="ingredient-row">
                 <div class="input-group">
                     <label>Ingredient</label>
-                    <select class="ingredient-select">
+                    <select class="ingredient-select" onchange="updateUnitLabel(this)">
                         <option value="">Select ingredient</option>
                         ${ingredients.map(ing => `<option value="${ing}">${ing.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>`).join('')}
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>Amount (units)</label>
-                    <input type="number" class="ingredient-amount" step="0.01" min="0" placeholder="0.00" />
+                    <label class="amount-label">Amount</label>
+                    <input type="number" class="ingredient-amount" step="0.1" min="0" placeholder="0.0" />
                 </div>
                 <button class="btn btn-danger" onclick="removeIngredientRow(this)" style="margin-top: 25px;">✕</button>
             </div>
@@ -69,19 +69,31 @@ function addIngredientRow(drinkId) {
     row.innerHTML = `
         <div class="input-group">
             <label>Ingredient</label>
-            <select class="ingredient-select">
+            <select class="ingredient-select" onchange="updateUnitLabel(this)">
                 <option value="">Select ingredient</option>
                 ${ingredients.map(ing => `<option value="${ing}">${ing.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>`).join('')}
             </select>
         </div>
         <div class="input-group">
-            <label>Amount (units)</label>
-            <input type="number" class="ingredient-amount" step="0.01" min="0" placeholder="0.00" />
+            <label class="amount-label">Amount</label>
+            <input type="number" class="ingredient-amount" step="0.1" min="0" placeholder="0.0" />
         </div>
         <button class="btn btn-danger" onclick="removeIngredientRow(this)" style="margin-top: 25px;">✕</button>
     `;
     
     ingredientsContainer.appendChild(row);
+}
+
+function updateUnitLabel(selectElement) {
+    const row = selectElement.closest('.ingredient-row');
+    const label = row.querySelector('.amount-label');
+    const ingredient = selectElement.value;
+    
+    // Liquids use ml, solids use g
+    const liquidIngredients = ['milk', 'water', 'vanilla_syrup'];
+    const unit = liquidIngredients.includes(ingredient) ? 'ml' : 'g';
+    
+    label.textContent = `Amount (${unit})`;
 }
 
 function removeIngredientRow(button) {
@@ -97,7 +109,11 @@ function removeIngredientRow(button) {
 }
 
 function collectData() {
-    // Collect ingredient costs
+    // Collect fixed costs
+    const cleaningCost = parseFloat(document.getElementById('cleaning_cost').value) || 0;
+    const productsPerDay = parseFloat(document.getElementById('products_per_day').value) || 1;
+    
+    // Collect ingredient costs (per kg or L)
     const ingredientCosts = {};
     ingredients.forEach(ing => {
         const value = parseFloat(document.getElementById(ing).value) || 0;
@@ -124,10 +140,12 @@ function collectData() {
             const amountInput = row.querySelector('.ingredient-amount');
             
             const ingredientName = select.value;
-            const amount = parseFloat(amountInput.value) || 0;
+            let amount = parseFloat(amountInput.value) || 0;
             
             if (ingredientName && amount > 0) {
-                drinkIngredients[ingredientName] = amount;
+                // Convert g to kg or ml to L (divide by 1000)
+                // This allows backend to calculate: (cost_per_kg * kg_used) or (cost_per_L * L_used)
+                drinkIngredients[ingredientName] = amount / 1000;
             }
         });
         
@@ -140,6 +158,8 @@ function collectData() {
     });
     
     return {
+        cleaning_cost: cleaningCost,
+        products_per_day: productsPerDay,
         ingredients: ingredientCosts,
         drinks: drinks
     };
@@ -194,7 +214,7 @@ function displayResults(results) {
             <table class="breakdown-table">
                 <thead>
                     <tr>
-                        <th>Ingredient</th>
+                        <th>Item</th>
                         <th>Amount</th>
                         <th>Unit Cost</th>
                         <th>Total</th>
@@ -207,22 +227,57 @@ function displayResults(results) {
             breakdownHTML += `
                 <tr>
                     <td>${item.ingredient.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
-                    <td>${item.amount.toFixed(2)} units</td>
-                    <td>$${item.unit_cost.toFixed(2)}</td>
-                    <td><strong>$${item.total_cost.toFixed(2)}</strong></td>
+                    <td>${(item.amount * 1000).toFixed(1)} ${getUnitForIngredient(item.ingredient)}</td>
+                    <td>€${item.unit_cost.toFixed(2)}/${getBaseUnitForIngredient(item.ingredient)}</td>
+                    <td><strong>€${item.total_cost.toFixed(2)}</strong></td>
                 </tr>
             `;
         });
+        
+        // Add cleaning cost row if present
+        if (result.cleaning_cost_per_product && result.cleaning_cost_per_product > 0) {
+            breakdownHTML += `
+                <tr style="background-color: #e8f5e9;">
+                    <td><strong>Daily Cleaning Cost</strong></td>
+                    <td>Per product</td>
+                    <td>€${result.total_cleaning_cost?.toFixed(2) || '0.00'}/day</td>
+                    <td><strong>€${result.cleaning_cost_per_product.toFixed(2)}</strong></td>
+                </tr>
+            `;
+        }
         
         breakdownHTML += `
                 </tbody>
             </table>
         `;
         
+        // Show ingredient subtotal if cleaning cost is present
+        let subtotalHTML = '';
+        if (result.cleaning_cost_per_product && result.cleaning_cost_per_product > 0) {
+            const ingredientCost = result.total_cost - result.cleaning_cost_per_product;
+            subtotalHTML = `
+                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Ingredient Cost:</span>
+                        <span><strong>€${ingredientCost.toFixed(2)}</strong></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Cleaning Cost (per product):</span>
+                        <span><strong>€${result.cleaning_cost_per_product.toFixed(2)}</strong></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 1.1em; padding-top: 8px; border-top: 2px solid #ddd;">
+                        <span><strong>Total Cost:</strong></span>
+                        <span style="color: #2ecc71;"><strong>€${result.total_cost.toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+        
         resultCard.innerHTML = `
             <h3>${result.name}</h3>
-            <div class="result-total">Total Cost: $${result.total_cost.toFixed(2)}</div>
+            <div class="result-total">Total Cost: €${result.total_cost.toFixed(2)}</div>
             ${breakdownHTML}
+            ${subtotalHTML}
         `;
         
         resultsContainer.appendChild(resultCard);
@@ -328,6 +383,10 @@ async function loadConfiguration(configId) {
             document.getElementById('current-config').style.display = 'block';
             document.getElementById('current-config-name').textContent = config.name;
             
+            // Load fixed costs
+            document.getElementById('cleaning_cost').value = config.cleaning_cost || 0;
+            document.getElementById('products_per_day').value = config.products_per_day || 1;
+            
             // Load ingredients
             ingredients.forEach(ing => {
                 const input = document.getElementById(ing);
@@ -354,19 +413,22 @@ async function loadConfiguration(configId) {
                 
                 // Add ingredient rows
                 Object.entries(drink.ingredients).forEach(([ingredientName, amount]) => {
+                    const unit = getUnitForIngredient(ingredientName);
+                    const displayAmount = amount * 1000; // Convert back to g/ml for display
+                    
                     const row = document.createElement('div');
                     row.className = 'ingredient-row';
                     row.innerHTML = `
                         <div class="input-group">
                             <label>Ingredient</label>
-                            <select class="ingredient-select">
+                            <select class="ingredient-select" onchange="updateUnitLabel(this)">
                                 <option value="">Select ingredient</option>
                                 ${ingredients.map(ing => `<option value="${ing}" ${ing === ingredientName ? 'selected' : ''}>${ing.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>`).join('')}
                             </select>
                         </div>
                         <div class="input-group">
-                            <label>Amount (units)</label>
-                            <input type="number" class="ingredient-amount" step="0.01" min="0" placeholder="0.00" value="${amount}" />
+                            <label class="amount-label">Amount (${unit})</label>
+                            <input type="number" class="ingredient-amount" step="0.1" min="0" placeholder="0.0" value="${displayAmount.toFixed(1)}" />
                         </div>
                         <button class="btn btn-danger" onclick="removeIngredientRow(this)" style="margin-top: 25px;">✕</button>
                     `;
@@ -426,6 +488,8 @@ async function saveConfiguration() {
     try {
         const payload = {
             name: name,
+            cleaning_cost: data.cleaning_cost,
+            products_per_day: data.products_per_day,
             ingredients: data.ingredients,
             drinks: data.drinks
         };
@@ -500,6 +564,10 @@ function newConfiguration() {
         currentConfigName = null;
         document.getElementById('current-config').style.display = 'none';
         
+        // Clear fixed costs
+        document.getElementById('cleaning_cost').value = '';
+        document.getElementById('products_per_day').value = '';
+        
         // Clear ingredients
         ingredients.forEach(ing => {
             const input = document.getElementById(ing);
@@ -520,6 +588,16 @@ function newConfiguration() {
         
         loadConfigurations();
     }
+}
+
+function getUnitForIngredient(ingredient) {
+    const liquidIngredients = ['milk', 'water', 'vanilla_syrup'];
+    return liquidIngredients.includes(ingredient) ? 'ml' : 'g';
+}
+
+function getBaseUnitForIngredient(ingredient) {
+    const liquidIngredients = ['milk', 'water', 'vanilla_syrup'];
+    return liquidIngredients.includes(ingredient) ? 'L' : 'kg';
 }
 
 function escapeHtml(text) {
