@@ -1568,7 +1568,7 @@ def get_cash_register_events():
 @app.route('/api/cash-register/events', methods=['POST'])
 @login_required
 def record_cash_event():
-    """Record a cash register event (withdrawal/deposit)"""
+    """Record a cash register event (withdrawal/deposit) and auto-update actual cash"""
     try:
         data = request.get_json()
         event_type = data.get('event_type')  # 'withdrawal' or 'deposit'
@@ -1585,17 +1585,61 @@ def record_cash_event():
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
+        # Get the latest counter reading to update cash
+        if config_id:
+            cursor.execute('''
+                SELECT id, counter_data, cash_in_register, notes
+                FROM counter_readings
+                WHERE config_id = ?
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (config_id,))
+        else:
+            cursor.execute('''
+                SELECT id, counter_data, cash_in_register, notes
+                FROM counter_readings
+                WHERE user_id = ? AND config_id IS NULL
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (current_user.id,))
+        
+        latest_reading = cursor.fetchone()
+        
+        # Record the cash event
         cursor.execute('''
             INSERT INTO cash_register_events (user_id, config_id, event_type, amount, description)
             VALUES (?, ?, ?, ?, ?)
         ''', (current_user.id, config_id, event_type, amount, description))
+        
+        # Auto-update actual cash by creating a new counter reading
+        if latest_reading:
+            old_cash = latest_reading[2]
+            counter_data = latest_reading[1]  # Keep same counter values
+            old_notes = latest_reading[3] or ''
+            
+            # Calculate new cash amount
+            if event_type == 'withdrawal':
+                new_cash = old_cash - amount
+            else:  # deposit
+                new_cash = old_cash + amount
+            
+            # Create auto-generated note
+            auto_note = f"Auto-updated after {event_type}: {description}"
+            if old_notes:
+                auto_note = f"{old_notes} | {auto_note}"
+            
+            # Insert new counter reading with updated cash
+            cursor.execute('''
+                INSERT INTO counter_readings (user_id, config_id, counter_data, cash_in_register, notes)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (current_user.id, config_id, counter_data, new_cash, auto_note))
         
         conn.commit()
         conn.close()
         
         return jsonify({
             'success': True,
-            'message': f'{event_type.capitalize()} recorded successfully'
+            'message': f'{event_type.capitalize()} recorded and cash register updated automatically'
         })
     
     except Exception as e:

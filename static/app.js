@@ -1614,9 +1614,11 @@ async function recordCashEvent() {
             document.getElementById('cash-event-amount').value = '';
             document.getElementById('cash-event-description').value = '';
             
-            // Reload data
+            // Reload ALL related data (balance, events, readings, counter inputs)
             loadCashEvents();
             loadCashRegisterBalance();
+            loadRecentReadings();
+            populateCounterInputs();  // Update counter inputs with new cash amount
         } else {
             alert(data.error || 'Failed to record cash event');
         }
