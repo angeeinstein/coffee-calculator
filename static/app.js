@@ -73,12 +73,22 @@ function addDrink() {
     `;
     
     drinksContainer.appendChild(drinkCard);
+    
+    // Refresh counter inputs if on counter reading tab
+    if (document.getElementById('tab-counter') && document.getElementById('tab-counter').classList.contains('active')) {
+        populateCounterInputs();
+    }
 }
 
 function removeDrink(drinkId) {
     const drinkCard = document.getElementById(`drink-${drinkId}`);
     if (drinkCard) {
         drinkCard.remove();
+        
+        // Refresh counter inputs if on counter reading tab
+        if (document.getElementById('tab-counter') && document.getElementById('tab-counter').classList.contains('active')) {
+            populateCounterInputs();
+        }
     }
 }
 
@@ -260,6 +270,11 @@ async function calculateCosts() {
             };
             displayResults(result.results);
             document.getElementById('download-pdf-btn').classList.remove('hidden');
+            
+            // Refresh counter inputs if on counter reading tab
+            if (document.getElementById('tab-counter') && document.getElementById('tab-counter').classList.contains('active')) {
+                populateCounterInputs();
+            }
         } else {
             alert('Error calculating costs: ' + result.error);
         }
@@ -1252,14 +1267,18 @@ async function submitCounterReading() {
                 counter_data: counterData,
                 cash_in_register: cashInRegister,
                 notes: notes,
-                product_prices: productPrices
+                product_prices: productPrices,
+                config_id: currentConfigId  // Link to current configuration
             })
         });
         
         const data = await response.json();
         
         if (data.success) {
-            alert(`Counter reading submitted successfully!\n${data.sales_calculated.length} products calculated.`);
+            const productsCalc = data.sales_calculated && data.sales_calculated.length > 0 
+                ? `${data.sales_calculated.length} products calculated.`
+                : 'First reading recorded (no previous reading to compare).';
+            alert(`Counter reading submitted successfully!\n${productsCalc}`);
             
             // Clear form
             document.getElementById('cash-in-register').value = '';
@@ -1280,7 +1299,11 @@ async function submitCounterReading() {
 // Load recent counter readings
 async function loadRecentReadings() {
     try {
-        const response = await fetch('/api/counter-readings', {
+        const url = currentConfigId 
+            ? `/api/counter-readings?config_id=${currentConfigId}`
+            : '/api/counter-readings';
+        
+        const response = await fetch(url, {
             credentials: 'include'
         });
         
@@ -1310,21 +1333,56 @@ function displayRecentReadings(readings) {
         
         return `
             <div class="event-item">
-                <div>
+                <div style="flex: 1;">
                     <strong>${date}</strong><br>
                     <span style="color: #666;">${products}</span><br>
                     <span style="color: #27ae60; font-weight: 600;">Cash: €${reading.cash_in_register.toFixed(2)}</span>
                     ${reading.notes ? `<br><em style="color: #999;">${escapeHtml(reading.notes)}</em>` : ''}
                 </div>
+                <button class="btn btn-danger" onclick="deleteReading(${reading.id})" style="margin-left: 10px; padding: 5px 10px; font-size: 0.85em;">
+                    🗑️ Delete
+                </button>
             </div>
         `;
     }).join('');
 }
 
+// Delete a counter reading
+async function deleteReading(readingId) {
+    if (!confirm('Delete this reading? This will also remove associated sales records.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/counter-readings/${readingId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Reading deleted successfully');
+            loadRecentReadings();
+            loadCashRegisterBalance();
+            loadSalesStatistics();
+        } else {
+            alert(data.error || 'Failed to delete reading');
+        }
+    } catch (error) {
+        console.error('Error deleting reading:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
 // Load cash register balance
 async function loadCashRegisterBalance() {
     try {
-        const response = await fetch('/api/cash-register/balance', {
+        const url = currentConfigId 
+            ? `/api/cash-register/balance?config_id=${currentConfigId}`
+            : '/api/cash-register/balance';
+        
+        const response = await fetch(url, {
             credentials: 'include'
         });
         
@@ -1378,7 +1436,8 @@ async function recordCashEvent() {
             body: JSON.stringify({
                 event_type: eventType,
                 amount: amount,
-                description: description
+                description: description,
+                config_id: currentConfigId  // Link to current configuration
             })
         });
         
@@ -1406,7 +1465,11 @@ async function recordCashEvent() {
 // Load cash events
 async function loadCashEvents() {
     try {
-        const response = await fetch('/api/cash-register/events', {
+        const url = currentConfigId 
+            ? `/api/cash-register/events?config_id=${currentConfigId}`
+            : '/api/cash-register/events';
+        
+        const response = await fetch(url, {
             credentials: 'include'
         });
         
@@ -1452,7 +1515,11 @@ async function loadSalesStatistics() {
     const days = parseInt(document.getElementById('stats-period').value);
     
     try {
-        const response = await fetch(`/api/sales-statistics?days=${days}`, {
+        const url = currentConfigId 
+            ? `/api/sales-statistics?days=${days}&config_id=${currentConfigId}`
+            : `/api/sales-statistics?days=${days}`;
+        
+        const response = await fetch(url, {
             credentials: 'include'
         });
         

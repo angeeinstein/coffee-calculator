@@ -119,11 +119,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS counter_readings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            config_id INTEGER,
             reading_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             counter_data TEXT NOT NULL,
             cash_in_register REAL NOT NULL,
             notes TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (config_id) REFERENCES configurations(id) ON DELETE SET NULL
         )
     ''')
     
@@ -132,11 +134,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS cash_register_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            config_id INTEGER,
             event_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             event_type TEXT NOT NULL,
             amount REAL NOT NULL,
             description TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (config_id) REFERENCES configurations(id) ON DELETE SET NULL
         )
     ''')
     
@@ -145,6 +149,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS sales_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            config_id INTEGER,
             start_reading_id INTEGER NOT NULL,
             end_reading_id INTEGER NOT NULL,
             product_name TEXT NOT NULL,
@@ -153,6 +158,7 @@ def init_db():
             total_revenue REAL NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (config_id) REFERENCES configurations(id) ON DELETE SET NULL,
             FOREIGN KEY (start_reading_id) REFERENCES counter_readings(id) ON DELETE CASCADE,
             FOREIGN KEY (end_reading_id) REFERENCES counter_readings(id) ON DELETE CASCADE
         )
@@ -173,6 +179,22 @@ def init_db():
     
     if 'products_per_day' not in columns:
         cursor.execute('ALTER TABLE configurations ADD COLUMN products_per_day INTEGER DEFAULT 1')
+    
+    # Migration: Add config_id to sales tracking tables if it doesn't exist
+    cursor.execute("PRAGMA table_info(counter_readings)")
+    cr_columns = [column[1] for column in cursor.fetchall()]
+    if 'config_id' not in cr_columns:
+        cursor.execute('ALTER TABLE counter_readings ADD COLUMN config_id INTEGER')
+    
+    cursor.execute("PRAGMA table_info(cash_register_events)")
+    cre_columns = [column[1] for column in cursor.fetchall()]
+    if 'config_id' not in cre_columns:
+        cursor.execute('ALTER TABLE cash_register_events ADD COLUMN config_id INTEGER')
+    
+    cursor.execute("PRAGMA table_info(sales_records)")
+    sr_columns = [column[1] for column in cursor.fetchall()]
+    if 'config_id' not in sr_columns:
+        cursor.execute('ALTER TABLE sales_records ADD COLUMN config_id INTEGER')
     
     conn.commit()
     conn.close()
@@ -1154,18 +1176,44 @@ def delete_tea_bag(tea_bag_id):
 @app.route('/api/counter-readings', methods=['GET'])
 @login_required
 def get_counter_readings():
-    """Get all counter readings for the current user"""
+    """Get all counter readings for the current user/config"""
     try:
+        config_id = request.args.get('config_id', type=int)
+        
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT id, reading_date, counter_data, cash_in_register, notes
-            FROM counter_readings
-            WHERE user_id = ?
-            ORDER BY reading_date DESC
-            LIMIT 50
-        ''', (current_user.id,))
+        # Build query based on whether config_id is provided
+        if config_id:
+            # Verify user has access to this config
+            cursor.execute('''
+                SELECT id FROM configurations WHERE id = ? AND user_id = ?
+                UNION
+                SELECT c.id FROM configurations c
+                JOIN shared_configs sc ON c.id = sc.config_id
+                WHERE c.id = ? AND sc.shared_with_user_id = ?
+            ''', (config_id, current_user.id, config_id, current_user.id))
+            
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'success': False, 'error': 'Access denied'}), 403
+            
+            cursor.execute('''
+                SELECT id, reading_date, counter_data, cash_in_register, notes, config_id
+                FROM counter_readings
+                WHERE config_id = ?
+                ORDER BY reading_date DESC
+                LIMIT 50
+            ''', (config_id,))
+        else:
+            # Get all readings for user (backward compatibility)
+            cursor.execute('''
+                SELECT id, reading_date, counter_data, cash_in_register, notes, config_id
+                FROM counter_readings
+                WHERE user_id = ?
+                ORDER BY reading_date DESC
+                LIMIT 50
+            ''', (current_user.id,))
         
         readings = []
         for row in cursor.fetchall():
@@ -1174,7 +1222,8 @@ def get_counter_readings():
                 'reading_date': row[1],
                 'counter_data': json.loads(row[2]),
                 'cash_in_register': row[3],
-                'notes': row[4]
+                'notes': row[4],
+                'config_id': row[5]
             })
         
         conn.close()
@@ -1193,26 +1242,50 @@ def submit_counter_reading():
         cash_in_register = float(data.get('cash_in_register', 0))
         notes = data.get('notes', '')
         product_prices = data.get('product_prices', {})  # {productName: price}
+        config_id = data.get('config_id')  # Link to configuration
         
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
+        # Verify user has access to this config if provided
+        if config_id:
+            cursor.execute('''
+                SELECT id FROM configurations WHERE id = ? AND user_id = ?
+                UNION
+                SELECT c.id FROM configurations c
+                JOIN shared_configs sc ON c.id = sc.config_id
+                WHERE c.id = ? AND sc.shared_with_user_id = ?
+            ''', (config_id, current_user.id, config_id, current_user.id))
+            
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
         # Insert new counter reading
         cursor.execute('''
-            INSERT INTO counter_readings (user_id, counter_data, cash_in_register, notes)
-            VALUES (?, ?, ?, ?)
-        ''', (current_user.id, json.dumps(counter_data), cash_in_register, notes))
+            INSERT INTO counter_readings (user_id, config_id, counter_data, cash_in_register, notes)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (current_user.id, config_id, json.dumps(counter_data), cash_in_register, notes))
         
         new_reading_id = cursor.lastrowid
         
-        # Get the previous reading to calculate sales
-        cursor.execute('''
-            SELECT id, counter_data, cash_in_register
-            FROM counter_readings
-            WHERE user_id = ? AND id < ?
-            ORDER BY reading_date DESC
-            LIMIT 1
-        ''', (current_user.id, new_reading_id))
+        # Get the previous reading to calculate sales (same config or user if no config)
+        if config_id:
+            cursor.execute('''
+                SELECT id, counter_data, cash_in_register
+                FROM counter_readings
+                WHERE config_id = ? AND id < ?
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (config_id, new_reading_id))
+        else:
+            cursor.execute('''
+                SELECT id, counter_data, cash_in_register
+                FROM counter_readings
+                WHERE user_id = ? AND id < ? AND config_id IS NULL
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (current_user.id, new_reading_id))
         
         prev_reading = cursor.fetchone()
         
@@ -1234,9 +1307,9 @@ def submit_counter_reading():
                     # Insert sales record
                     cursor.execute('''
                         INSERT INTO sales_records 
-                        (user_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (current_user.id, prev_id, new_reading_id, product_name, quantity_sold, unit_price, total_revenue))
+                        (user_id, config_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (current_user.id, config_id, prev_id, new_reading_id, product_name, quantity_sold, unit_price, total_revenue))
                     
                     sales_calculated.append({
                         'product': product_name,
@@ -1257,22 +1330,87 @@ def submit_counter_reading():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
+@app.route('/api/counter-readings/<int:reading_id>', methods=['DELETE'])
+@login_required
+def delete_counter_reading(reading_id):
+    """Delete a counter reading and its associated sales records"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Verify the reading exists and user has access
+        cursor.execute('''
+            SELECT cr.user_id, cr.config_id
+            FROM counter_readings cr
+            WHERE cr.id = ?
+        ''', (reading_id,))
+        
+        reading = cursor.fetchone()
+        
+        if not reading:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Reading not found'}), 404
+        
+        # Check if user owns the reading or has access through shared config
+        if reading[1]:  # Has config_id
+            cursor.execute('''
+                SELECT id FROM configurations WHERE id = ? AND user_id = ?
+                UNION
+                SELECT c.id FROM configurations c
+                JOIN shared_configs sc ON c.id = sc.config_id
+                WHERE c.id = ? AND sc.shared_with_user_id = ? AND sc.can_edit = 1
+            ''', (reading[1], current_user.id, reading[1], current_user.id))
+            
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'success': False, 'error': 'Permission denied'}), 403
+        else:  # No config, check user ownership
+            if reading[0] != current_user.id:
+                conn.close()
+                return jsonify({'success': False, 'error': 'Permission denied'}), 403
+        
+        # Delete associated sales records (CASCADE should handle this, but let's be explicit)
+        cursor.execute('DELETE FROM sales_records WHERE start_reading_id = ? OR end_reading_id = ?', 
+                      (reading_id, reading_id))
+        
+        # Delete the reading
+        cursor.execute('DELETE FROM counter_readings WHERE id = ?', (reading_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Reading deleted successfully'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
 @app.route('/api/cash-register/balance', methods=['GET'])
 @login_required
 def get_cash_register_balance():
     """Get current cash register balance and reconciliation"""
     try:
+        config_id = request.args.get('config_id', type=int)
+        
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         # Get the latest counter reading
-        cursor.execute('''
-            SELECT id, cash_in_register, reading_date
-            FROM counter_readings
-            WHERE user_id = ?
-            ORDER BY reading_date DESC
-            LIMIT 1
-        ''', (current_user.id,))
+        if config_id:
+            cursor.execute('''
+                SELECT id, cash_in_register, reading_date, config_id
+                FROM counter_readings
+                WHERE config_id = ?
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (config_id,))
+        else:
+            cursor.execute('''
+                SELECT id, cash_in_register, reading_date, config_id
+                FROM counter_readings
+                WHERE user_id = ?
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (current_user.id,))
         
         latest_reading = cursor.fetchone()
         
@@ -1292,37 +1430,56 @@ def get_cash_register_balance():
         actual_cash = latest_reading[1]
         last_reading_date = latest_reading[2]
         reading_id = latest_reading[0]
+        reading_config_id = latest_reading[3]
         
         # Calculate total sales revenue since last reading
         cursor.execute('''
             SELECT COALESCE(SUM(total_revenue), 0)
             FROM sales_records
-            WHERE user_id = ? AND end_reading_id = ?
-        ''', (current_user.id, reading_id))
+            WHERE end_reading_id = ?
+        ''', (reading_id,))
         
         total_sales = cursor.fetchone()[0]
         
         # Calculate withdrawals and deposits since last reading
-        cursor.execute('''
-            SELECT 
-                COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
-                COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
-            FROM cash_register_events
-            WHERE user_id = ? AND event_date >= ?
-        ''', (current_user.id, last_reading_date))
+        if reading_config_id:
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+                FROM cash_register_events
+                WHERE config_id = ? AND event_date >= ?
+            ''', (reading_config_id, last_reading_date))
+        else:
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+                FROM cash_register_events
+                WHERE user_id = ? AND event_date >= ? AND config_id IS NULL
+            ''', (current_user.id, last_reading_date))
         
         cash_events = cursor.fetchone()
         withdrawals = cash_events[0]
         deposits = cash_events[1]
         
         # Get previous reading's cash to calculate expected
-        cursor.execute('''
-            SELECT cash_in_register
-            FROM counter_readings
-            WHERE user_id = ? AND id < ?
-            ORDER BY reading_date DESC
-            LIMIT 1
-        ''', (current_user.id, reading_id))
+        if reading_config_id:
+            cursor.execute('''
+                SELECT cash_in_register
+                FROM counter_readings
+                WHERE config_id = ? AND id < ?
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (reading_config_id, reading_id))
+        else:
+            cursor.execute('''
+                SELECT cash_in_register
+                FROM counter_readings
+                WHERE user_id = ? AND id < ? AND config_id IS NULL
+                ORDER BY reading_date DESC
+                LIMIT 1
+            ''', (current_user.id, reading_id))
         
         prev_reading = cursor.fetchone()
         prev_cash = prev_reading[0] if prev_reading else 0
@@ -1352,16 +1509,27 @@ def get_cash_register_balance():
 def get_cash_register_events():
     """Get cash register events history"""
     try:
+        config_id = request.args.get('config_id', type=int)
+        
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT id, event_date, event_type, amount, description
-            FROM cash_register_events
-            WHERE user_id = ?
-            ORDER BY event_date DESC
-            LIMIT 100
-        ''', (current_user.id,))
+        if config_id:
+            cursor.execute('''
+                SELECT id, event_date, event_type, amount, description
+                FROM cash_register_events
+                WHERE config_id = ?
+                ORDER BY event_date DESC
+                LIMIT 100
+            ''', (config_id,))
+        else:
+            cursor.execute('''
+                SELECT id, event_date, event_type, amount, description
+                FROM cash_register_events
+                WHERE user_id = ?
+                ORDER BY event_date DESC
+                LIMIT 100
+            ''', (current_user.id,))
         
         events = []
         for row in cursor.fetchall():
@@ -1388,6 +1556,7 @@ def record_cash_event():
         event_type = data.get('event_type')  # 'withdrawal' or 'deposit'
         amount = float(data.get('amount', 0))
         description = data.get('description', '')
+        config_id = data.get('config_id')  # Link to configuration
         
         if event_type not in ['withdrawal', 'deposit']:
             return jsonify({'success': False, 'error': 'Invalid event type'}), 400
@@ -1399,9 +1568,9 @@ def record_cash_event():
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO cash_register_events (user_id, event_type, amount, description)
-            VALUES (?, ?, ?, ?)
-        ''', (current_user.id, event_type, amount, description))
+            INSERT INTO cash_register_events (user_id, config_id, event_type, amount, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (current_user.id, config_id, event_type, amount, description))
         
         conn.commit()
         conn.close()
@@ -1420,22 +1589,36 @@ def get_sales_statistics():
     """Get sales statistics and analytics"""
     try:
         days = int(request.args.get('days', 30))  # Default 30 days
+        config_id = request.args.get('config_id', type=int)
         
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         # Get sales by product
-        cursor.execute('''
-            SELECT 
-                product_name,
-                SUM(quantity_sold) as total_quantity,
-                SUM(total_revenue) as total_revenue,
-                AVG(unit_price) as avg_price
-            FROM sales_records
-            WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
-            GROUP BY product_name
-            ORDER BY total_revenue DESC
-        ''', (current_user.id, days))
+        if config_id:
+            cursor.execute('''
+                SELECT 
+                    product_name,
+                    SUM(quantity_sold) as total_quantity,
+                    SUM(total_revenue) as total_revenue,
+                    AVG(unit_price) as avg_price
+                FROM sales_records
+                WHERE config_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+                GROUP BY product_name
+                ORDER BY total_revenue DESC
+            ''', (config_id, days))
+        else:
+            cursor.execute('''
+                SELECT 
+                    product_name,
+                    SUM(quantity_sold) as total_quantity,
+                    SUM(total_revenue) as total_revenue,
+                    AVG(unit_price) as avg_price
+                FROM sales_records
+                WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+                GROUP BY product_name
+                ORDER BY total_revenue DESC
+            ''', (current_user.id, days))
         
         products = []
         total_revenue = 0
@@ -1453,16 +1636,28 @@ def get_sales_statistics():
             total_items += row[1]
         
         # Get daily sales trend
-        cursor.execute('''
-            SELECT 
-                DATE(created_at) as sale_date,
-                SUM(quantity_sold) as daily_quantity,
-                SUM(total_revenue) as daily_revenue
-            FROM sales_records
-            WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
-            GROUP BY DATE(created_at)
-            ORDER BY sale_date ASC
-        ''', (current_user.id, days))
+        if config_id:
+            cursor.execute('''
+                SELECT 
+                    DATE(created_at) as sale_date,
+                    SUM(quantity_sold) as daily_quantity,
+                    SUM(total_revenue) as daily_revenue
+                FROM sales_records
+                WHERE config_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+                GROUP BY DATE(created_at)
+                ORDER BY sale_date ASC
+            ''', (config_id, days))
+        else:
+            cursor.execute('''
+                SELECT 
+                    DATE(created_at) as sale_date,
+                    SUM(quantity_sold) as daily_quantity,
+                    SUM(total_revenue) as daily_revenue
+                FROM sales_records
+                WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+                GROUP BY DATE(created_at)
+                ORDER BY sale_date ASC
+            ''', (current_user.id, days))
         
         daily_trend = []
         for row in cursor.fetchall():
@@ -1473,11 +1668,18 @@ def get_sales_statistics():
             })
         
         # Get total cash register discrepancies
-        cursor.execute('''
-            SELECT COUNT(*) as readings_count
-            FROM counter_readings
-            WHERE user_id = ? AND reading_date >= datetime('now', '-' || ? || ' days')
-        ''', (current_user.id, days))
+        if config_id:
+            cursor.execute('''
+                SELECT COUNT(*) as readings_count
+                FROM counter_readings
+                WHERE config_id = ? AND reading_date >= datetime('now', '-' || ? || ' days')
+            ''', (config_id, days))
+        else:
+            cursor.execute('''
+                SELECT COUNT(*) as readings_count
+                FROM counter_readings
+                WHERE user_id = ? AND reading_date >= datetime('now', '-' || ? || ' days')
+            ''', (current_user.id, days))
         
         readings_count = cursor.fetchone()[0]
         
