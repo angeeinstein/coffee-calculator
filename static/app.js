@@ -1275,6 +1275,8 @@ async function populateCounterInputs() {
     const drinksContainer = document.getElementById('drinks-container');
     const drinks = drinksContainer.querySelectorAll('.drink-card');
     
+    console.log('populateCounterInputs called, found', drinks.length, 'drinks');
+    
     if (drinks.length === 0) {
         counterInputs.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Please define drinks first</p>';
         return;
@@ -1292,6 +1294,7 @@ async function populateCounterInputs() {
         
         if (data.success && data.readings && data.readings.length > 0) {
             lastReadingData = data.readings[0].counter_data; // Most recent reading
+            console.log('Loaded last reading data:', lastReadingData);
         }
     } catch (error) {
         console.error('Error fetching last reading:', error);
@@ -1304,8 +1307,12 @@ async function populateCounterInputs() {
         const nameInput = document.getElementById(`drink-name-${drinkId}`);
         const drinkName = nameInput ? nameInput.value.trim() : '';
         
+        console.log(`Processing drink ${drinkId}: "${drinkName}"`);
+        
         if (drinkName) {
             const lastValue = lastReadingData[drinkName] || 0;
+            
+            console.log(`  - Last value for "${drinkName}": ${lastValue}`);
             
             const inputGroup = document.createElement('div');
             inputGroup.className = 'input-group';
@@ -1315,8 +1322,12 @@ async function populateCounterInputs() {
                        step="1" min="0" placeholder="0" value="${lastValue}">
             `;
             counterInputs.appendChild(inputGroup);
+        } else {
+            console.log(`  - Skipping drink ${drinkId}: no name`);
         }
     });
+    
+    console.log('Counter inputs populated, total inputs:', counterInputs.querySelectorAll('input').length);
 }
 
 // Submit counter reading
@@ -1420,9 +1431,11 @@ async function submitCounterReading() {
             document.getElementById('cash-in-register').value = '';
             document.getElementById('counter-notes').value = '';
             
-            // Reload data
+            // Reload data and refresh counter inputs
             loadRecentReadings();
             loadCashRegisterBalance();
+            // Re-populate counter inputs to show the updated values
+            populateCounterInputs();
         } else {
             alert(data.error || 'Failed to submit counter reading');
         }
@@ -1461,11 +1474,26 @@ function displayRecentReadings(readings) {
         return;
     }
     
+    console.log('Displaying recent readings:', readings);
+    
     container.innerHTML = readings.map(reading => {
         const date = new Date(reading.reading_date).toLocaleString();
-        const products = Object.entries(reading.counter_data)
-            .map(([name, count]) => `${name}: ${count}`)
-            .join(', ');
+        
+        // Check if counter_data exists and is valid
+        let products = '';
+        if (reading.counter_data && typeof reading.counter_data === 'object') {
+            const entries = Object.entries(reading.counter_data);
+            if (entries.length > 0) {
+                products = entries
+                    .map(([name, count]) => `${name}: ${count}`)
+                    .join(', ');
+            } else {
+                products = '<em style="color: #999;">No products recorded</em>';
+            }
+        } else {
+            products = '<em style="color: #999;">Invalid data format</em>';
+            console.warn('Invalid counter_data for reading:', reading);
+        }
         
         return `
             <div class="event-item">
