@@ -481,9 +481,23 @@ def generate_pdf():
         elements.append(Paragraph("Drink Costs Breakdown", heading_style))
         
         for result in results:
-            # Drink name
-            drink_name = Paragraph(f"<b>{result['name']}</b> - Total Cost: €{result['total_cost']:.2f}", 
-                                  styles['Heading3'])
+            # Find matching drink data for vending price
+            drink_data = next((d for d in drinks if d.get('name') == result['name']), None)
+            vending_price = drink_data.get('vending_price', 0) if drink_data else 0
+            
+            # Drink name with profit info
+            if vending_price > 0:
+                profit = vending_price - result['total_cost']
+                profit_margin = (profit / vending_price) * 100
+                drink_name = Paragraph(
+                    f"<b>{result['name']}</b> - Production Cost: €{result['total_cost']:.2f} | "
+                    f"Vending Price: €{vending_price:.2f} | "
+                    f"Profit: €{profit:.2f} ({profit_margin:.1f}%)", 
+                    styles['Heading3']
+                )
+            else:
+                drink_name = Paragraph(f"<b>{result['name']}</b> - Total Cost: €{result['total_cost']:.2f}", 
+                                      styles['Heading3'])
             elements.append(drink_name)
             elements.append(Spacer(1, 6))
             

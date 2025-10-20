@@ -33,6 +33,11 @@ function addDrink() {
             <input type="text" placeholder="Drink Name (e.g., Cappuccino)" id="drink-name-${drinkCounter}" />
             <button class="btn btn-danger" onclick="removeDrink(${drinkCounter})">Remove</button>
         </div>
+        <div class="input-group" style="margin: 15px 0; background: linear-gradient(135deg, rgba(46, 204, 113, 0.1), rgba(39, 174, 96, 0.1)); padding: 15px; border-radius: 8px; border: 2px solid #27ae60;">
+            <label for="vending-price-${drinkCounter}" style="color: #27ae60; font-weight: 600; font-size: 1.1em;">💰 Vending Price (€)</label>
+            <input type="number" id="vending-price-${drinkCounter}" step="0.01" min="0" placeholder="0.00" style="font-size: 1.1em; font-weight: 600; color: #27ae60;" />
+            <small style="color: #666; margin-top: 5px; display: block;">This is the price you sell this drink for (used for sales tracking and profit calculations)</small>
+        </div>
         <div id="ingredients-${drinkCounter}">
             <div class="ingredient-row">
                 <div class="input-group">
@@ -209,12 +214,16 @@ function collectData() {
             });
         }
         
+        // Get vending price
+        const vendingPrice = parseFloat(document.getElementById(`vending-price-${drinkId}`).value) || 0;
+        
         if (Object.keys(drinkIngredients).length > 0 || Object.keys(drinkTeaBags).length > 0 || customItems.length > 0) {
             drinks.push({
                 name: drinkName,
                 ingredients: drinkIngredients,
                 tea_bags: drinkTeaBags,
-                custom_items: customItems
+                custom_items: customItems,
+                vending_price: vendingPrice
             });
         }
     });
@@ -367,7 +376,46 @@ function displayResults(results) {
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 1.1em; padding-top: 8px; border-top: 2px solid #ddd;">
                         <span><strong>Total Cost:</strong></span>
-                        <span style="color: #2ecc71;"><strong>€${result.total_cost.toFixed(2)}</strong></span>
+                        <span style="color: #e74c3c;"><strong>€${result.total_cost.toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Get vending price for this drink
+        const drinkData = calculationResults.drinks ? calculationResults.drinks.find(d => d.name === result.name) : null;
+        const vendingPrice = drinkData && drinkData.vending_price ? drinkData.vending_price : 0;
+        
+        // Calculate profit margin
+        let profitHTML = '';
+        if (vendingPrice > 0) {
+            const profit = vendingPrice - result.total_cost;
+            const profitMargin = (profit / vendingPrice) * 100;
+            const markup = (profit / result.total_cost) * 100;
+            
+            const profitColor = profit > 0 ? '#27ae60' : '#e74c3c';
+            
+            profitHTML = `
+                <div style="margin-top: 15px; padding: 15px; background: linear-gradient(135deg, rgba(46, 204, 113, 0.1), rgba(39, 174, 96, 0.1)); border-radius: 8px; border: 2px solid #27ae60;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><strong>💰 Vending Price:</strong></span>
+                        <span style="color: #27ae60; font-size: 1.2em;"><strong>€${vendingPrice.toFixed(2)}</strong></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid #ddd;">
+                        <span>📉 Production Cost:</span>
+                        <span style="color: #e74c3c;">€${result.total_cost.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><strong>💵 Profit per Unit:</strong></span>
+                        <span style="color: ${profitColor}; font-size: 1.1em;"><strong>€${profit.toFixed(2)}</strong></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>📊 Profit Margin:</span>
+                        <span style="color: ${profitColor};"><strong>${profitMargin.toFixed(1)}%</strong></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>📈 Markup:</span>
+                        <span style="color: ${profitColor};"><strong>${markup.toFixed(1)}%</strong></span>
                     </div>
                 </div>
             `;
@@ -375,9 +423,10 @@ function displayResults(results) {
         
         resultCard.innerHTML = `
             <h3>${result.name}</h3>
-            <div class="result-total">Total Cost: €${result.total_cost.toFixed(2)}</div>
+            <div class="result-total">Production Cost: €${result.total_cost.toFixed(2)}</div>
             ${breakdownHTML}
             ${subtotalHTML}
+            ${profitHTML}
         `;
         
         resultsContainer.appendChild(resultCard);
@@ -522,6 +571,14 @@ async function loadConfiguration(configId) {
                 
                 // Set drink name
                 document.getElementById(`drink-name-${drinkId}`).value = drink.name;
+                
+                // Set vending price if available
+                if (drink.vending_price) {
+                    const vendingPriceInput = document.getElementById(`vending-price-${drinkId}`);
+                    if (vendingPriceInput) {
+                        vendingPriceInput.value = drink.vending_price;
+                    }
+                }
                 
                 // Clear default ingredient row
                 const ingredientsContainer = document.getElementById(`ingredients-${drinkId}`);
@@ -1238,11 +1295,17 @@ async function submitCounterReading() {
             counterData[drinkName] = counterValue;
             hasData = true;
             
-            // Get price from calculation results if available
+            // Get VENDING PRICE (not cost) from calculation results if available
             if (calculationResults && calculationResults.drinks) {
-                const drinkResult = calculationResults.drinks.find(d => d.name === drinkName);
-                if (drinkResult) {
-                    productPrices[drinkName] = drinkResult.total_cost;
+                const drinkData = calculationResults.drinks.find(d => d.name === drinkName);
+                if (drinkData && drinkData.vending_price && drinkData.vending_price > 0) {
+                    productPrices[drinkName] = drinkData.vending_price;
+                } else if (calculationResults.results) {
+                    // Fallback: try to get from results if vending price not set
+                    const drinkResult = calculationResults.results.find(d => d.name === drinkName);
+                    if (drinkResult) {
+                        productPrices[drinkName] = drinkResult.total_cost;
+                    }
                 }
             }
         }
