@@ -114,6 +114,50 @@ def init_db():
         )
     ''')
     
+    # Counter readings table - stores snapshots of machine counter values
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS counter_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            reading_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            counter_data TEXT NOT NULL,
+            cash_in_register REAL NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Cash register events - withdrawals, deposits, adjustments
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cash_register_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            event_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            event_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Sales records - calculated from counter differences
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sales_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            start_reading_id INTEGER NOT NULL,
+            end_reading_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            quantity_sold INTEGER NOT NULL,
+            unit_price REAL NOT NULL,
+            total_revenue REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (start_reading_id) REFERENCES counter_readings(id) ON DELETE CASCADE,
+            FOREIGN KEY (end_reading_id) REFERENCES counter_readings(id) ON DELETE CASCADE
+        )
+    ''')
+    
     # Migration: Add user_id to existing configurations if it doesn't exist
     cursor.execute("PRAGMA table_info(configurations)")
     columns = [column[1] for column in cursor.fetchall()]
@@ -469,6 +513,168 @@ def generate_pdf():
             ]))
             elements.append(breakdown_table)
             elements.append(Spacer(1, 20))
+        
+        # Sales Statistics Section (if user is logged in)
+        if current_user.is_authenticated:
+            try:
+                conn = sqlite3.connect(DATABASE_PATH)
+                cursor = conn.cursor()
+                
+                # Get sales statistics for last 30 days
+                cursor.execute('''
+                    SELECT 
+                        product_name,
+                        SUM(quantity_sold) as total_quantity,
+                        SUM(total_revenue) as total_revenue,
+                        AVG(unit_price) as avg_price
+                    FROM sales_records
+                    WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
+                    GROUP BY product_name
+                    ORDER BY total_revenue DESC
+                ''', (current_user.id,))
+                
+                sales_data = cursor.fetchall()
+                
+                if sales_data:
+                    elements.append(Spacer(1, 30))
+                    elements.append(Paragraph("Sales Statistics (Last 30 Days)", heading_style))
+                    
+                    total_revenue = sum(row[2] for row in sales_data)
+                    total_items = sum(row[1] for row in sales_data)
+                    
+                    # Summary box
+                    summary_data = [
+                        ['Metric', 'Value'],
+                        ['Total Items Sold', str(int(total_items))],
+                        ['Total Revenue', f"€{total_revenue:.2f}"]
+                    ]
+                    
+                    summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+                    summary_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9b59b6')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 12),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 10),
+                    ]))
+                    elements.append(summary_table)
+                    elements.append(Spacer(1, 20))
+                    
+                    # Product breakdown
+                    elements.append(Paragraph("Sales by Product", styles['Heading3']))
+                    elements.append(Spacer(1, 10))
+                    
+                    product_data = [['Product', 'Quantity', 'Avg Price', 'Revenue']]
+                    for row in sales_data:
+                        product_data.append([
+                            row[0],
+                            str(int(row[1])),
+                            f"€{row[3]:.2f}",
+                            f"€{row[2]:.2f}"
+                        ])
+                    
+                    product_table = Table(product_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+                    product_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#16a085')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ]))
+                    elements.append(product_table)
+                    elements.append(Spacer(1, 20))
+                    
+                    # Cash register reconciliation
+                    cursor.execute('''
+                        SELECT cash_in_register, reading_date
+                        FROM counter_readings
+                        WHERE user_id = ?
+                        ORDER BY reading_date DESC
+                        LIMIT 1
+                    ''', (current_user.id,))
+                    
+                    latest_reading = cursor.fetchone()
+                    
+                    if latest_reading:
+                        elements.append(Paragraph("Cash Register Status", styles['Heading3']))
+                        elements.append(Spacer(1, 10))
+                        
+                        # Calculate expected vs actual
+                        actual_cash = latest_reading[0]
+                        last_date = latest_reading[1]
+                        
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(total_revenue), 0)
+                            FROM sales_records
+                            WHERE user_id = ? AND created_at >= ?
+                        ''', (current_user.id, last_date))
+                        
+                        sales_since = cursor.fetchone()[0]
+                        
+                        cursor.execute('''
+                            SELECT 
+                                COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                                COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+                            FROM cash_register_events
+                            WHERE user_id = ? AND event_date >= ?
+                        ''', (current_user.id, last_date))
+                        
+                        cash_events = cursor.fetchone()
+                        withdrawals = cash_events[0]
+                        deposits = cash_events[1]
+                        
+                        # Get previous cash
+                        cursor.execute('''
+                            SELECT cash_in_register
+                            FROM counter_readings
+                            WHERE user_id = ? AND reading_date < ?
+                            ORDER BY reading_date DESC
+                            LIMIT 1
+                        ''', (current_user.id, last_date))
+                        
+                        prev = cursor.fetchone()
+                        prev_cash = prev[0] if prev else 0
+                        
+                        expected_cash = prev_cash + sales_since + deposits - withdrawals
+                        difference = actual_cash - expected_cash
+                        
+                        cash_data = [
+                            ['Description', 'Amount'],
+                            ['Expected Cash in Register', f"€{expected_cash:.2f}"],
+                            ['Actual Cash in Register', f"€{actual_cash:.2f}"],
+                            ['Difference', f"€{difference:.2f}"],
+                            ['Status', 'OK' if abs(difference) < 5 else ('Warning' if abs(difference) < 10 else 'Check Required')]
+                        ]
+                        
+                        cash_table = Table(cash_data, colWidths=[3*inch, 2*inch])
+                        cash_table.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e74c3c' if abs(difference) > 10 else '#e67e22' if abs(difference) > 5 else '#27ae60')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 12),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 1), (-1, -1), 10),
+                        ]))
+                        elements.append(cash_table)
+                
+                conn.close()
+            except Exception as e:
+                # If sales tracking fails, just skip it and continue with regular PDF
+                print(f"Sales statistics error in PDF: {e}")
         
         # Build PDF
         doc.build(elements)
@@ -939,6 +1145,355 @@ def delete_tea_bag(tea_bag_id):
         conn.close()
         
         return jsonify({'success': True, 'message': 'Tea bag deleted successfully'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+# Sales Tracking Endpoints
+
+@app.route('/api/counter-readings', methods=['GET'])
+@login_required
+def get_counter_readings():
+    """Get all counter readings for the current user"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, reading_date, counter_data, cash_in_register, notes
+            FROM counter_readings
+            WHERE user_id = ?
+            ORDER BY reading_date DESC
+            LIMIT 50
+        ''', (current_user.id,))
+        
+        readings = []
+        for row in cursor.fetchall():
+            readings.append({
+                'id': row[0],
+                'reading_date': row[1],
+                'counter_data': json.loads(row[2]),
+                'cash_in_register': row[3],
+                'notes': row[4]
+            })
+        
+        conn.close()
+        return jsonify({'success': True, 'readings': readings})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/counter-readings', methods=['POST'])
+@login_required
+def submit_counter_reading():
+    """Submit a new counter reading and calculate sales"""
+    try:
+        data = request.get_json()
+        counter_data = data.get('counter_data', {})  # {productName: counterValue}
+        cash_in_register = float(data.get('cash_in_register', 0))
+        notes = data.get('notes', '')
+        product_prices = data.get('product_prices', {})  # {productName: price}
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Insert new counter reading
+        cursor.execute('''
+            INSERT INTO counter_readings (user_id, counter_data, cash_in_register, notes)
+            VALUES (?, ?, ?, ?)
+        ''', (current_user.id, json.dumps(counter_data), cash_in_register, notes))
+        
+        new_reading_id = cursor.lastrowid
+        
+        # Get the previous reading to calculate sales
+        cursor.execute('''
+            SELECT id, counter_data, cash_in_register
+            FROM counter_readings
+            WHERE user_id = ? AND id < ?
+            ORDER BY reading_date DESC
+            LIMIT 1
+        ''', (current_user.id, new_reading_id))
+        
+        prev_reading = cursor.fetchone()
+        
+        sales_calculated = []
+        
+        if prev_reading:
+            prev_id = prev_reading[0]
+            prev_counter_data = json.loads(prev_reading[1])
+            
+            # Calculate sales for each product
+            for product_name, current_count in counter_data.items():
+                prev_count = prev_counter_data.get(product_name, 0)
+                quantity_sold = current_count - prev_count
+                
+                if quantity_sold > 0 and product_name in product_prices:
+                    unit_price = product_prices[product_name]
+                    total_revenue = quantity_sold * unit_price
+                    
+                    # Insert sales record
+                    cursor.execute('''
+                        INSERT INTO sales_records 
+                        (user_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (current_user.id, prev_id, new_reading_id, product_name, quantity_sold, unit_price, total_revenue))
+                    
+                    sales_calculated.append({
+                        'product': product_name,
+                        'quantity': quantity_sold,
+                        'revenue': total_revenue
+                    })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'reading_id': new_reading_id,
+            'sales_calculated': sales_calculated,
+            'message': 'Counter reading submitted successfully'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/cash-register/balance', methods=['GET'])
+@login_required
+def get_cash_register_balance():
+    """Get current cash register balance and reconciliation"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get the latest counter reading
+        cursor.execute('''
+            SELECT id, cash_in_register, reading_date
+            FROM counter_readings
+            WHERE user_id = ?
+            ORDER BY reading_date DESC
+            LIMIT 1
+        ''', (current_user.id,))
+        
+        latest_reading = cursor.fetchone()
+        
+        if not latest_reading:
+            conn.close()
+            return jsonify({
+                'success': True,
+                'actual_cash': 0,
+                'expected_cash': 0,
+                'difference': 0,
+                'withdrawals': 0,
+                'deposits': 0,
+                'total_sales': 0,
+                'last_reading_date': None
+            })
+        
+        actual_cash = latest_reading[1]
+        last_reading_date = latest_reading[2]
+        reading_id = latest_reading[0]
+        
+        # Calculate total sales revenue since last reading
+        cursor.execute('''
+            SELECT COALESCE(SUM(total_revenue), 0)
+            FROM sales_records
+            WHERE user_id = ? AND end_reading_id = ?
+        ''', (current_user.id, reading_id))
+        
+        total_sales = cursor.fetchone()[0]
+        
+        # Calculate withdrawals and deposits since last reading
+        cursor.execute('''
+            SELECT 
+                COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+            FROM cash_register_events
+            WHERE user_id = ? AND event_date >= ?
+        ''', (current_user.id, last_reading_date))
+        
+        cash_events = cursor.fetchone()
+        withdrawals = cash_events[0]
+        deposits = cash_events[1]
+        
+        # Get previous reading's cash to calculate expected
+        cursor.execute('''
+            SELECT cash_in_register
+            FROM counter_readings
+            WHERE user_id = ? AND id < ?
+            ORDER BY reading_date DESC
+            LIMIT 1
+        ''', (current_user.id, reading_id))
+        
+        prev_reading = cursor.fetchone()
+        prev_cash = prev_reading[0] if prev_reading else 0
+        
+        # Expected = Previous Cash + Sales + Deposits - Withdrawals
+        expected_cash = prev_cash + total_sales + deposits - withdrawals
+        difference = actual_cash - expected_cash
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'actual_cash': round(actual_cash, 2),
+            'expected_cash': round(expected_cash, 2),
+            'difference': round(difference, 2),
+            'withdrawals': round(withdrawals, 2),
+            'deposits': round(deposits, 2),
+            'total_sales': round(total_sales, 2),
+            'last_reading_date': last_reading_date
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/cash-register/events', methods=['GET'])
+@login_required
+def get_cash_register_events():
+    """Get cash register events history"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, event_date, event_type, amount, description
+            FROM cash_register_events
+            WHERE user_id = ?
+            ORDER BY event_date DESC
+            LIMIT 100
+        ''', (current_user.id,))
+        
+        events = []
+        for row in cursor.fetchall():
+            events.append({
+                'id': row[0],
+                'event_date': row[1],
+                'event_type': row[2],
+                'amount': row[3],
+                'description': row[4]
+            })
+        
+        conn.close()
+        return jsonify({'success': True, 'events': events})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/cash-register/events', methods=['POST'])
+@login_required
+def record_cash_event():
+    """Record a cash register event (withdrawal/deposit)"""
+    try:
+        data = request.get_json()
+        event_type = data.get('event_type')  # 'withdrawal' or 'deposit'
+        amount = float(data.get('amount', 0))
+        description = data.get('description', '')
+        
+        if event_type not in ['withdrawal', 'deposit']:
+            return jsonify({'success': False, 'error': 'Invalid event type'}), 400
+        
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'Amount must be positive'}), 400
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO cash_register_events (user_id, event_type, amount, description)
+            VALUES (?, ?, ?, ?)
+        ''', (current_user.id, event_type, amount, description))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{event_type.capitalize()} recorded successfully'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/sales-statistics', methods=['GET'])
+@login_required
+def get_sales_statistics():
+    """Get sales statistics and analytics"""
+    try:
+        days = int(request.args.get('days', 30))  # Default 30 days
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get sales by product
+        cursor.execute('''
+            SELECT 
+                product_name,
+                SUM(quantity_sold) as total_quantity,
+                SUM(total_revenue) as total_revenue,
+                AVG(unit_price) as avg_price
+            FROM sales_records
+            WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+            GROUP BY product_name
+            ORDER BY total_revenue DESC
+        ''', (current_user.id, days))
+        
+        products = []
+        total_revenue = 0
+        total_items = 0
+        
+        for row in cursor.fetchall():
+            product_data = {
+                'name': row[0],
+                'quantity': row[1],
+                'revenue': round(row[2], 2),
+                'avg_price': round(row[3], 2)
+            }
+            products.append(product_data)
+            total_revenue += row[2]
+            total_items += row[1]
+        
+        # Get daily sales trend
+        cursor.execute('''
+            SELECT 
+                DATE(created_at) as sale_date,
+                SUM(quantity_sold) as daily_quantity,
+                SUM(total_revenue) as daily_revenue
+            FROM sales_records
+            WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+            GROUP BY DATE(created_at)
+            ORDER BY sale_date ASC
+        ''', (current_user.id, days))
+        
+        daily_trend = []
+        for row in cursor.fetchall():
+            daily_trend.append({
+                'date': row[0],
+                'quantity': row[1],
+                'revenue': round(row[2], 2)
+            })
+        
+        # Get total cash register discrepancies
+        cursor.execute('''
+            SELECT COUNT(*) as readings_count
+            FROM counter_readings
+            WHERE user_id = ? AND reading_date >= datetime('now', '-' || ? || ' days')
+        ''', (current_user.id, days))
+        
+        readings_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'statistics': {
+                'total_revenue': round(total_revenue, 2),
+                'total_items_sold': total_items,
+                'products': products,
+                'daily_trend': daily_trend,
+                'readings_count': readings_count,
+                'period_days': days
+            }
+        })
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400

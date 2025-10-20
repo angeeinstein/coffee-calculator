@@ -4,15 +4,35 @@ A web application for calculating the cost of coffee drinks based on ingredient 
 
 ## Features
 
+### Core Calculator
 - 📦 **Ingredient Management**: Define costs for multiple ingredients (coffee beans, milk, chocolate powder, etc.)
 - 🍵 **Custom Drink Creation**: Create unlimited drinks with custom ingredient mixtures
 - 💰 **Cost Calculation**: Automatic calculation of per-drink costs with detailed breakdowns
-- � **Configuration Storage**: Save and load multiple configurations (e.g., different menus or recipes)
+- 💾 **Configuration Storage**: Save and load multiple configurations (e.g., different menus or recipes)
 - 🗑️ **Config Management**: Easy management with save, load, and delete functionality
-- �📄 **PDF Export**: Generate professional PDF reports with all cost information
+- 📄 **PDF Export**: Generate professional PDF reports with all cost information
 - 🎨 **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
-- 🚀 **Production Ready**: Runs as a systemd service with Gunicorn for high performance
+
+### User Management
+- � **Secure Authentication**: User registration and login with bcrypt password hashing
+- 👥 **Multi-User Support**: Each user has their own configurations and data
+- 🤝 **Configuration Sharing**: Share your drink configurations with other users (with optional edit permissions)
+- 🍵 **Tea Bag Library**: Manage per-unit cost items separately from bulk ingredients
+
+### Sales Tracking & Business Intelligence
+- 📱 **Counter Reading System**: Track your coffee machine's counter values
+- 💵 **Cash Register Management**: Monitor expected vs actual cash with automatic reconciliation
+- 💸 **Cash Event Tracking**: Record withdrawals (supplies, expenses) and deposits
+- 📊 **Sales Analytics**: Comprehensive statistics on products sold and revenue generated
+- 📈 **Sales Reports**: Visual dashboards with product performance and daily trends
+- 🎯 **Multi-Period Analysis**: View statistics for 7, 30, 90, or 365 days
+- 🧾 **Enhanced PDF Reports**: Sales data automatically included in PDF exports
+
+### Production Ready
+- �🚀 **Production Ready**: Runs as a systemd service with Gunicorn for high performance
 - 🌐 **Server Ready**: Designed to run on Ubuntu server with Cloudflare tunnel support
+- 🔄 **Easy Updates**: One-command update system that preserves all data
+- 📚 **Database Migration**: Automatic schema updates with no manual intervention
 
 ## Quick Installation on Ubuntu Server
 
@@ -377,6 +397,130 @@ Total Cost: €0.97 per Cappuccino
 4. **New Configuration**: Click "📝 New Config" to start fresh
 
 All configurations are automatically stored in the SQLite database on the server.
+
+### Sales Tracking & Business Intelligence
+
+The application includes a comprehensive sales tracking system to help you monitor your actual sales and cash register.
+
+#### Quick Start
+
+1. **Define Your Drinks**: First, create your drinks in the main calculator section
+2. **Calculate Costs**: Run the cost calculation to establish drink prices
+3. **Navigate to Sales Tracking**: Scroll down to the "Sales Tracking & Cash Register" section
+
+#### Counter Reading Tab
+
+Track your coffee machine's counter values:
+
+1. **Record Initial Reading**:
+   - The system automatically generates input fields for each drink you've defined
+   - Enter the current counter value from your machine for each drink
+   - Enter the cash currently in your register
+   - Add optional notes (e.g., "Morning opening")
+   - Click "Submit Reading"
+
+2. **Record Regular Readings**:
+   - Repeat the process daily or at regular intervals
+   - The system automatically calculates sales by comparing counter values
+   - Sales quantity = Current counter - Previous counter
+   - Revenue = Quantity sold × Drink price
+
+3. **View History**:
+   - See your recent readings with timestamps
+   - Review counter values and cash amounts
+   - Check notes for context
+
+#### Cash Register Tab
+
+Monitor your cash register reconciliation:
+
+1. **View Balance Status**:
+   - **Expected Cash**: Calculated as Previous Cash + Sales + Deposits - Withdrawals
+   - **Actual Cash**: From your latest counter reading
+   - **Difference**: Shows discrepancy with color coding
+     - 🟢 Green: < €5 (normal)
+     - 🟠 Orange: €5-10 (review)
+     - 🔴 Red: > €10 (investigate)
+
+2. **Record Cash Events**:
+   - **Withdrawals** (money taken out):
+     - Buying supplies: "Bought 5L milk - €12.50"
+     - Expenses: "Cleaning supplies - €8.00"
+     - Bank deposits: "Deposited to bank - €200.00"
+   - **Deposits** (money added):
+     - Adding change: "Added coins for change - €20.00"
+     - Corrections: "Corrected previous shortage - €5.00"
+
+3. **View Event History**:
+   - See all withdrawals and deposits with timestamps
+   - Track descriptions for audit purposes
+   - Monitor cash flow patterns
+
+#### Statistics Tab
+
+Analyze your business performance:
+
+1. **Select Time Period**:
+   - Last 7 days
+   - Last 30 days (default)
+   - Last 90 days
+   - Last year
+
+2. **View Summary Cards**:
+   - Total Revenue (€)
+   - Total Items Sold
+   - Number of Readings Recorded
+   - Period Duration
+
+3. **Sales by Product Table**:
+   - Product name
+   - Quantity sold
+   - Average price
+   - Total revenue
+   - Sorted by revenue (best sellers first)
+
+#### PDF Reports with Sales Data
+
+When you generate a PDF report, it now automatically includes:
+- Sales statistics for the last 30 days
+- Total items sold and revenue
+- Sales breakdown by product
+- Cash register reconciliation status
+- Color-coded alerts for cash discrepancies
+
+This gives you a complete business overview combining:
+- Cost structure (ingredient costs, drink costs)
+- Sales performance (actual sales, revenue)
+- Financial reconciliation (cash register status)
+
+#### Multi-User Sales Tracking
+
+- Each user has **independent sales data**
+- Sharing a configuration does **NOT** share sales data
+- Users can collaborate on recipes while keeping sales private
+- Perfect for multiple locations or separate machines
+
+#### Best Practices
+
+1. **Daily Routine**:
+   - Record counter reading at the same time each day
+   - Count cash and enter actual amount
+   - Record any withdrawals immediately
+   - Review expected vs actual cash
+
+2. **Weekly Review**:
+   - Check statistics tab
+   - Identify best-selling products
+   - Review cash discrepancies
+   - Generate PDF report for records
+
+3. **Accurate Tracking**:
+   - Always record cash events (withdrawals/deposits)
+   - Keep drink prices up-to-date
+   - Use notes field for unusual events
+   - Investigate large cash discrepancies promptly
+
+For detailed documentation, see **SALES_TRACKING_GUIDE.md** in the repository.
 
 ## Project Structure
 

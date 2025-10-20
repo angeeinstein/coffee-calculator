@@ -1144,3 +1144,364 @@ async function unshareWith(configId, userId) {
         console.error('Error removing share:', error);
     }
 }
+
+// ====== SALES TRACKING FUNCTIONS ======
+
+// Tab switching
+function switchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+    
+    // Load appropriate data
+    if (tabName === 'counter') {
+        populateCounterInputs();
+        loadRecentReadings();
+    } else if (tabName === 'register') {
+        loadCashRegisterBalance();
+        loadCashEvents();
+    } else if (tabName === 'statistics') {
+        loadSalesStatistics();
+    }
+}
+
+// Populate counter inputs based on defined drinks
+function populateCounterInputs() {
+    const counterInputs = document.getElementById('counter-inputs');
+    const drinksContainer = document.getElementById('drinks-container');
+    const drinks = drinksContainer.querySelectorAll('.drink-card');
+    
+    if (drinks.length === 0) {
+        counterInputs.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Please define drinks first</p>';
+        return;
+    }
+    
+    counterInputs.innerHTML = '';
+    
+    drinks.forEach((drink) => {
+        const drinkId = drink.id.split('-')[1];
+        const nameInput = document.getElementById(`drink-name-${drinkId}`);
+        const drinkName = nameInput ? nameInput.value.trim() : '';
+        
+        if (drinkName) {
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group';
+            inputGroup.innerHTML = `
+                <label for="counter-${drinkId}">${escapeHtml(drinkName)} Counter</label>
+                <input type="number" id="counter-${drinkId}" data-drink-name="${escapeHtml(drinkName)}" 
+                       step="1" min="0" placeholder="0">
+            `;
+            counterInputs.appendChild(inputGroup);
+        }
+    });
+}
+
+// Submit counter reading
+async function submitCounterReading() {
+    const cashInRegister = parseFloat(document.getElementById('cash-in-register').value) || 0;
+    const notes = document.getElementById('counter-notes').value.trim();
+    
+    // Collect counter data
+    const counterData = {};
+    const productPrices = {};
+    const counterInputs = document.querySelectorAll('[id^="counter-"]');
+    
+    if (counterInputs.length === 0) {
+        alert('Please define drinks first and enter counter values');
+        return;
+    }
+    
+    let hasData = false;
+    counterInputs.forEach(input => {
+        const drinkName = input.dataset.drinkName;
+        const counterValue = parseInt(input.value) || 0;
+        if (drinkName && counterValue >= 0) {
+            counterData[drinkName] = counterValue;
+            hasData = true;
+            
+            // Get price from calculation results if available
+            if (calculationResults && calculationResults.drinks) {
+                const drinkResult = calculationResults.drinks.find(d => d.name === drinkName);
+                if (drinkResult) {
+                    productPrices[drinkName] = drinkResult.total_cost;
+                }
+            }
+        }
+    });
+    
+    if (!hasData) {
+        alert('Please enter at least one counter value');
+        return;
+    }
+    
+    if (cashInRegister < 0) {
+        alert('Cash in register cannot be negative');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/counter-readings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                counter_data: counterData,
+                cash_in_register: cashInRegister,
+                notes: notes,
+                product_prices: productPrices
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`Counter reading submitted successfully!\n${data.sales_calculated.length} products calculated.`);
+            
+            // Clear form
+            document.getElementById('cash-in-register').value = '';
+            document.getElementById('counter-notes').value = '';
+            
+            // Reload data
+            loadRecentReadings();
+            loadCashRegisterBalance();
+        } else {
+            alert(data.error || 'Failed to submit counter reading');
+        }
+    } catch (error) {
+        console.error('Error submitting counter reading:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+// Load recent counter readings
+async function loadRecentReadings() {
+    try {
+        const response = await fetch('/api/counter-readings', {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.readings) {
+            displayRecentReadings(data.readings);
+        }
+    } catch (error) {
+        console.error('Error loading readings:', error);
+    }
+}
+
+function displayRecentReadings(readings) {
+    const container = document.getElementById('recent-readings');
+    
+    if (readings.length === 0) {
+        container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No readings yet</p>';
+        return;
+    }
+    
+    container.innerHTML = readings.map(reading => {
+        const date = new Date(reading.reading_date).toLocaleString();
+        const products = Object.entries(reading.counter_data)
+            .map(([name, count]) => `${name}: ${count}`)
+            .join(', ');
+        
+        return `
+            <div class="event-item">
+                <div>
+                    <strong>${date}</strong><br>
+                    <span style="color: #666;">${products}</span><br>
+                    <span style="color: #27ae60; font-weight: 600;">Cash: €${reading.cash_in_register.toFixed(2)}</span>
+                    ${reading.notes ? `<br><em style="color: #999;">${escapeHtml(reading.notes)}</em>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load cash register balance
+async function loadCashRegisterBalance() {
+    try {
+        const response = await fetch('/api/cash-register/balance', {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayCashRegisterBalance(data);
+        }
+    } catch (error) {
+        console.error('Error loading cash register balance:', error);
+    }
+}
+
+function displayCashRegisterBalance(data) {
+    document.getElementById('expected-cash').textContent = `€${data.expected_cash.toFixed(2)}`;
+    document.getElementById('actual-cash').textContent = `€${data.actual_cash.toFixed(2)}`;
+    document.getElementById('cash-difference').textContent = `€${data.difference.toFixed(2)}`;
+    
+    // Update styling based on difference
+    const balanceDisplay = document.getElementById('cash-balance-display');
+    balanceDisplay.classList.remove('warning', 'error');
+    
+    if (Math.abs(data.difference) > 10) {
+        balanceDisplay.classList.add('error');
+    } else if (Math.abs(data.difference) > 5) {
+        balanceDisplay.classList.add('warning');
+    }
+}
+
+// Record cash event
+async function recordCashEvent() {
+    const eventType = document.getElementById('cash-event-type').value;
+    const amount = parseFloat(document.getElementById('cash-event-amount').value);
+    const description = document.getElementById('cash-event-description').value.trim();
+    
+    if (!amount || amount <= 0) {
+        alert('Please enter a valid amount');
+        return;
+    }
+    
+    if (!description) {
+        alert('Please enter a description');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/cash-register/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                event_type: eventType,
+                amount: amount,
+                description: description
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(data.message);
+            
+            // Clear form
+            document.getElementById('cash-event-amount').value = '';
+            document.getElementById('cash-event-description').value = '';
+            
+            // Reload data
+            loadCashEvents();
+            loadCashRegisterBalance();
+        } else {
+            alert(data.error || 'Failed to record cash event');
+        }
+    } catch (error) {
+        console.error('Error recording cash event:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+// Load cash events
+async function loadCashEvents() {
+    try {
+        const response = await fetch('/api/cash-register/events', {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.events) {
+            displayCashEvents(data.events);
+        }
+    } catch (error) {
+        console.error('Error loading cash events:', error);
+    }
+}
+
+function displayCashEvents(events) {
+    const container = document.getElementById('cash-events-list');
+    
+    if (events.length === 0) {
+        container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No events recorded</p>';
+        return;
+    }
+    
+    container.innerHTML = events.map(event => {
+        const date = new Date(event.event_date).toLocaleString();
+        const icon = event.event_type === 'withdrawal' ? '💸' : '💵';
+        
+        return `
+            <div class="event-item ${event.event_type}">
+                <div>
+                    <strong>${icon} ${event.event_type.charAt(0).toUpperCase() + event.event_type.slice(1)}</strong><br>
+                    <span style="color: #666;">${date}</span><br>
+                    <em>${escapeHtml(event.description)}</em>
+                </div>
+                <div style="font-size: 1.5em; font-weight: bold; color: ${event.event_type === 'withdrawal' ? '#e74c3c' : '#27ae60'};">
+                    ${event.event_type === 'withdrawal' ? '-' : '+'}€${event.amount.toFixed(2)}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load sales statistics
+async function loadSalesStatistics() {
+    const days = parseInt(document.getElementById('stats-period').value);
+    
+    try {
+        const response = await fetch(`/api/sales-statistics?days=${days}`, {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.statistics) {
+            displaySalesStatistics(data.statistics);
+        }
+    } catch (error) {
+        console.error('Error loading sales statistics:', error);
+    }
+}
+
+function displaySalesStatistics(stats) {
+    // Display summary cards
+    const summaryContainer = document.getElementById('stats-summary');
+    summaryContainer.innerHTML = `
+        <div class="stat-card">
+            <h3>Total Revenue</h3>
+            <div class="value">€${stats.total_revenue.toFixed(2)}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Items Sold</h3>
+            <div class="value">${stats.total_items_sold}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Readings Recorded</h3>
+            <div class="value">${stats.readings_count}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Period</h3>
+            <div class="value">${stats.period_days} days</div>
+        </div>
+    `;
+    
+    // Display products table
+    const tableBody = document.querySelector('#product-sales-table tbody');
+    
+    if (stats.products.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No sales data yet</td></tr>';
+        return;
+    }
+    
+    tableBody.innerHTML = stats.products.map(product => `
+        <tr>
+            <td><strong>${escapeHtml(product.name)}</strong></td>
+            <td>${product.quantity}</td>
+            <td>€${product.avg_price.toFixed(2)}</td>
+            <td style="color: #27ae60; font-weight: 600;">€${product.revenue.toFixed(2)}</td>
+        </tr>
+    `).join('');
+}
