@@ -18,6 +18,28 @@ document.addEventListener('DOMContentLoaded', function() {
     addDrink();
     loadConfigurations();
     loadTeaBags();
+    
+    // Initialize sales tracking if user is logged in
+    const salesTrackingSection = document.getElementById('sales-tracking-section');
+    if (salesTrackingSection && !salesTrackingSection.classList.contains('hidden')) {
+        // Check which tab is active and load appropriate data
+        const activeTab = document.querySelector('.tab.active');
+        if (activeTab) {
+            const tabName = activeTab.textContent.toLowerCase().includes('counter') ? 'counter' :
+                           activeTab.textContent.toLowerCase().includes('register') ? 'register' :
+                           'statistics';
+            
+            if (tabName === 'counter') {
+                populateCounterInputs();
+                loadRecentReadings();
+            } else if (tabName === 'register') {
+                loadCashRegisterBalance();
+                loadCashEvents();
+            } else if (tabName === 'statistics') {
+                loadSalesStatistics();
+            }
+        }
+    }
 });
 
 function addDrink() {
@@ -694,6 +716,12 @@ async function loadConfiguration(configId) {
             // Reload configurations to update active state
             loadConfigurations();
             
+            // Update counter inputs if the sales tracking tab is visible
+            const salesTrackingSection = document.getElementById('sales-tracking-section');
+            if (salesTrackingSection && !salesTrackingSection.classList.contains('hidden')) {
+                populateCounterInputs();
+            }
+            
             // Clear results
             calculationResults = null;
             document.getElementById('results').classList.add('hidden');
@@ -1242,7 +1270,7 @@ function switchTab(tabName) {
 }
 
 // Populate counter inputs based on defined drinks
-function populateCounterInputs() {
+async function populateCounterInputs() {
     const counterInputs = document.getElementById('counter-inputs');
     const drinksContainer = document.getElementById('drinks-container');
     const drinks = drinksContainer.querySelectorAll('.drink-card');
@@ -1250,6 +1278,23 @@ function populateCounterInputs() {
     if (drinks.length === 0) {
         counterInputs.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Please define drinks first</p>';
         return;
+    }
+    
+    // Get last reading values if available
+    let lastReadingData = {};
+    try {
+        const url = currentConfigId 
+            ? `/api/counter-readings?config_id=${currentConfigId}`
+            : '/api/counter-readings';
+        
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        
+        if (data.success && data.readings && data.readings.length > 0) {
+            lastReadingData = data.readings[0].counter_data; // Most recent reading
+        }
+    } catch (error) {
+        console.error('Error fetching last reading:', error);
     }
     
     counterInputs.innerHTML = '';
@@ -1260,12 +1305,14 @@ function populateCounterInputs() {
         const drinkName = nameInput ? nameInput.value.trim() : '';
         
         if (drinkName) {
+            const lastValue = lastReadingData[drinkName] || 0;
+            
             const inputGroup = document.createElement('div');
             inputGroup.className = 'input-group';
             inputGroup.innerHTML = `
                 <label for="counter-${drinkId}">${escapeHtml(drinkName)} Counter</label>
                 <input type="number" id="counter-${drinkId}" data-drink-name="${escapeHtml(drinkName)}" 
-                       step="1" min="0" placeholder="0">
+                       step="1" min="0" placeholder="0" value="${lastValue}">
             `;
             counterInputs.appendChild(inputGroup);
         }
@@ -1295,19 +1342,30 @@ async function submitCounterReading() {
             counterData[drinkName] = counterValue;
             hasData = true;
             
-            // Get VENDING PRICE (not cost) from calculation results if available
-            if (calculationResults && calculationResults.drinks) {
-                const drinkData = calculationResults.drinks.find(d => d.name === drinkName);
-                if (drinkData && drinkData.vending_price && drinkData.vending_price > 0) {
-                    productPrices[drinkName] = drinkData.vending_price;
-                } else if (calculationResults.results) {
-                    // Fallback: try to get from results if vending price not set
-                    const drinkResult = calculationResults.results.find(d => d.name === drinkName);
-                    if (drinkResult) {
-                        productPrices[drinkName] = drinkResult.total_cost;
+            // Get vending price directly from the drink input field
+            const drinksContainer = document.getElementById('drinks-container');
+            const drinks = drinksContainer.querySelectorAll('.drink-card');
+            
+            drinks.forEach(drink => {
+                const drinkId = drink.id.split('-')[1];
+                const nameInput = document.getElementById(`drink-name-${drinkId}`);
+                const vendingPriceInput = document.getElementById(`vending-price-${drinkId}`);
+                
+                if (nameInput && nameInput.value.trim() === drinkName) {
+                    const vendingPrice = parseFloat(vendingPriceInput ? vendingPriceInput.value : 0);
+                    if (vendingPrice > 0) {
+                        productPrices[drinkName] = vendingPrice;
+                    } else {
+                        // Fallback: try to get from calculation results if vending price not set
+                        if (calculationResults && calculationResults.results) {
+                            const drinkResult = calculationResults.results.find(d => d.name === drinkName);
+                            if (drinkResult) {
+                                productPrices[drinkName] = drinkResult.total_cost;
+                            }
+                        }
                     }
                 }
-            }
+            });
         }
     });
     
@@ -1320,6 +1378,20 @@ async function submitCounterReading() {
         alert('Cash in register cannot be negative');
         return;
     }
+    
+    // Warn if no product prices found
+    if (Object.keys(productPrices).length === 0) {
+        if (!confirm('Warning: No vending prices set for any products. Revenue will be calculated as €0.\n\nYou can set vending prices in the green input fields above each drink.\n\nContinue anyway?')) {
+            return;
+        }
+    }
+    
+    console.log('Submitting counter reading:', {
+        counterData,
+        productPrices,
+        cashInRegister,
+        config_id: currentConfigId
+    });
     
     try {
         const response = await fetch('/api/counter-readings', {
@@ -1343,7 +1415,8 @@ async function submitCounterReading() {
                 : 'First reading recorded (no previous reading to compare).';
             alert(`Counter reading submitted successfully!\n${productsCalc}`);
             
-            // Clear form
+            // DON'T clear counter inputs - they are cumulative totals
+            // Only clear cash and notes
             document.getElementById('cash-in-register').value = '';
             document.getElementById('counter-notes').value = '';
             

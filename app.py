@@ -1314,22 +1314,26 @@ def submit_counter_reading():
                 prev_count = prev_counter_data.get(product_name, 0)
                 quantity_sold = current_count - prev_count
                 
-                if quantity_sold > 0 and product_name in product_prices:
-                    unit_price = product_prices[product_name]
-                    total_revenue = quantity_sold * unit_price
-                    
-                    # Insert sales record
-                    cursor.execute('''
-                        INSERT INTO sales_records 
-                        (user_id, config_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (current_user.id, config_id, prev_id, new_reading_id, product_name, quantity_sold, unit_price, total_revenue))
-                    
-                    sales_calculated.append({
-                        'product': product_name,
-                        'quantity': quantity_sold,
-                        'revenue': total_revenue
-                    })
+                if quantity_sold > 0:
+                    if product_name in product_prices:
+                        unit_price = product_prices[product_name]
+                        total_revenue = quantity_sold * unit_price
+                        
+                        # Insert sales record
+                        cursor.execute('''
+                            INSERT INTO sales_records 
+                            (user_id, config_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (current_user.id, config_id, prev_id, new_reading_id, product_name, quantity_sold, unit_price, total_revenue))
+                        
+                        sales_calculated.append({
+                            'product': product_name,
+                            'quantity': quantity_sold,
+                            'revenue': total_revenue
+                        })
+                    else:
+                        # Log warning if no price found for product with sales
+                        print(f"Warning: No price found for product '{product_name}' with {quantity_sold} units sold")
         
         conn.commit()
         conn.close()
