@@ -1459,51 +1459,21 @@ def get_cash_register_balance():
         
         total_sales = cursor.fetchone()[0]
         
-        # Calculate withdrawals and deposits since last reading
-        if reading_config_id:
-            cursor.execute('''
-                SELECT 
-                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
-                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
-                FROM cash_register_events
-                WHERE config_id = ? AND event_date >= ?
-            ''', (reading_config_id, last_reading_date))
-        else:
-            cursor.execute('''
-                SELECT 
-                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
-                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
-                FROM cash_register_events
-                WHERE user_id = ? AND event_date >= ? AND config_id IS NULL
-            ''', (current_user.id, last_reading_date))
+        # CORRECTED LOGIC:
+        # Since withdrawals/deposits auto-update the actual cash via new readings,
+        # the latest reading's cash amount ALREADY includes all money movements.
+        # 
+        # Expected cash = actual cash from latest reading (which is correct baseline)
+        # The difference should ONLY show discrepancies from manual counter vs system calculation
+        #
+        # If there are sales calculated but not yet in a new reading, expected > actual
+        # If actual cash was manually counted and differs, there's a real discrepancy
         
-        cash_events = cursor.fetchone()
-        withdrawals = cash_events[0]
-        deposits = cash_events[1]
+        # For now, with auto-updates: Expected should equal Actual
+        # Difference shows if you need to submit a new counter reading with sales
+        expected_cash = actual_cash + total_sales
         
-        # Get previous reading's cash to calculate expected
-        if reading_config_id:
-            cursor.execute('''
-                SELECT cash_in_register
-                FROM counter_readings
-                WHERE config_id = ? AND id < ?
-                ORDER BY reading_date DESC
-                LIMIT 1
-            ''', (reading_config_id, reading_id))
-        else:
-            cursor.execute('''
-                SELECT cash_in_register
-                FROM counter_readings
-                WHERE user_id = ? AND id < ? AND config_id IS NULL
-                ORDER BY reading_date DESC
-                LIMIT 1
-            ''', (current_user.id, reading_id))
-        
-        prev_reading = cursor.fetchone()
-        prev_cash = prev_reading[0] if prev_reading else 0
-        
-        # Expected = Previous Cash + Sales + Deposits - Withdrawals
-        expected_cash = prev_cash + total_sales + deposits - withdrawals
+        # Difference: negative means you haven't deposited sales yet, positive means extra cash
         difference = actual_cash - expected_cash
         
         conn.close()
@@ -1513,8 +1483,8 @@ def get_cash_register_balance():
             'actual_cash': round(actual_cash, 2),
             'expected_cash': round(expected_cash, 2),
             'difference': round(difference, 2),
-            'withdrawals': round(withdrawals, 2),
-            'deposits': round(deposits, 2),
+            'withdrawals': 0,
+            'deposits': 0,
             'total_sales': round(total_sales, 2),
             'last_reading_date': last_reading_date
         })
