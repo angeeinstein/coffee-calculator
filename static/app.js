@@ -2022,9 +2022,152 @@ async function loadSalesStatistics() {
         if (data.success && data.statistics) {
             displaySalesStatistics(data.statistics);
         }
+        
+        // Also load chart data
+        loadSalesTrendChart(days);
     } catch (error) {
         console.error('Error loading sales statistics:', error);
     }
+}
+
+// Global variable to store chart instance
+let salesTrendChart = null;
+
+async function loadSalesTrendChart(days) {
+    try {
+        const url = currentConfigId 
+            ? `/api/sales-trend-chart?days=${days}&config_id=${currentConfigId}`
+            : `/api/sales-trend-chart?days=${days}`;
+        
+        const response = await fetch(url, {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.chart_data) {
+            renderSalesTrendChart(data.chart_data);
+        }
+    } catch (error) {
+        console.error('Error loading sales trend chart:', error);
+    }
+}
+
+function renderSalesTrendChart(chartData) {
+    const ctx = document.getElementById('sales-trend-chart');
+    if (!ctx) return;
+    
+    // Destroy existing chart if it exists
+    if (salesTrendChart) {
+        salesTrendChart.destroy();
+    }
+    
+    // Prepare data
+    const labels = chartData.map(item => {
+        const date = new Date(item.date);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    
+    const productsData = chartData.map(item => item.products_sold);
+    const revenueData = chartData.map(item => item.cumulative_revenue);
+    const cashData = chartData.map(item => item.actual_cash);
+    
+    // Create chart
+    salesTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Products Sold (cumulative)',
+                    data: productsData,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y-products'
+                },
+                {
+                    label: 'Expected Revenue (€)',
+                    data: revenueData,
+                    borderColor: '#27ae60',
+                    backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y-money'
+                },
+                {
+                    label: 'Actual Cash (€)',
+                    data: cashData,
+                    borderColor: '#f39c12',
+                    backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y-money'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.dataset.yAxisID === 'y-money') {
+                                label += '€' + context.parsed.y.toFixed(2);
+                            } else {
+                                label += context.parsed.y;
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                'y-products': {
+                    type: 'linear',
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Products Sold'
+                    },
+                    ticks: {
+                        beginAtZero: true
+                    }
+                },
+                'y-money': {
+                    type: 'linear',
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Amount (€)'
+                    },
+                    ticks: {
+                        beginAtZero: true,
+                        callback: function(value) {
+                            return '€' + value.toFixed(0);
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
 }
 
 function displaySalesStatistics(stats) {

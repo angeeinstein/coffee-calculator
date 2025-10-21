@@ -1868,5 +1868,89 @@ def get_sales_statistics():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
+@app.route('/api/sales-trend-chart', methods=['GET'])
+@login_required
+def get_sales_trend_chart():
+    """Get sales trend data for chart visualization"""
+    try:
+        days = int(request.args.get('days', 30))
+        config_id = request.args.get('config_id', type=int)
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get all counter readings with their dates
+        if config_id:
+            cursor.execute('''
+                SELECT 
+                    cr.id,
+                    cr.reading_date,
+                    cr.cash_in_register,
+                    cr.counter_data
+                FROM counter_readings cr
+                WHERE cr.config_id = ? AND cr.reading_date >= datetime('now', '-' || ? || ' days')
+                ORDER BY cr.reading_date ASC
+            ''', (config_id, days))
+        else:
+            cursor.execute('''
+                SELECT 
+                    cr.id,
+                    cr.reading_date,
+                    cr.cash_in_register,
+                    cr.counter_data
+                FROM counter_readings cr
+                WHERE cr.user_id = ? AND cr.reading_date >= datetime('now', '-' || ? || ' days')
+                AND cr.config_id IS NULL
+                ORDER BY cr.reading_date ASC
+            ''', (current_user.id, days))
+        
+        readings = cursor.fetchall()
+        chart_data = []
+        
+        for reading in readings:
+            reading_id = reading[0]
+            reading_date = reading[1]
+            cash_in_register = reading[2]
+            counter_data = json.loads(reading[3])
+            
+            # Calculate total products sold in this reading
+            total_products = sum(counter_data.values())
+            
+            # Get total revenue from sales records for this reading
+            cursor.execute('''
+                SELECT COALESCE(SUM(total_revenue), 0)
+                FROM sales_records
+                WHERE end_reading_id = ?
+            ''', (reading_id,))
+            
+            revenue = cursor.fetchone()[0]
+            
+            # Get cumulative revenue up to this reading
+            cursor.execute('''
+                SELECT COALESCE(SUM(total_revenue), 0)
+                FROM sales_records
+                WHERE end_reading_id <= ?
+            ''', (reading_id,))
+            
+            cumulative_revenue = cursor.fetchone()[0]
+            
+            chart_data.append({
+                'date': reading_date,
+                'products_sold': total_products,
+                'revenue': round(revenue, 2),
+                'cumulative_revenue': round(cumulative_revenue, 2),
+                'actual_cash': round(cash_in_register, 2)
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'chart_data': chart_data
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

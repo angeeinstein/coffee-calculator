@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <meta name="description" content="Coffee Cost Calculator - Calculate the cost of your coffee drinks with precision">
     <title>Coffee Cost Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1020,7 +1021,12 @@
                         <!-- Dynamically populated stats cards -->
                     </div>
 
-                    <h3 style="margin: 30px 0 15px; color: #667eea;">📊 Sales by Product</h3>
+                    <h3 style="margin: 30px 0 15px; color: #667eea;">� Sales Trend</h3>
+                    <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 30px;">
+                        <canvas id="sales-trend-chart" style="max-height: 400px;"></canvas>
+                    </div>
+
+                    <h3 style="margin: 30px 0 15px; color: #667eea;">�📊 Sales by Product</h3>
                     <div style="overflow-x: auto;">
                         <table id="product-sales-table" class="sales-table">
                             <thead>
