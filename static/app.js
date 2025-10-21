@@ -286,6 +286,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize sales tracking if user is logged in
     const salesTrackingSection = document.getElementById('sales-tracking-section');
     if (salesTrackingSection && !salesTrackingSection.classList.contains('hidden')) {
+        // Set current date/time for counter reading
+        setCurrentDateTime();
+        
         // Check which tab is active and load appropriate data
         const activeTab = document.querySelector('.tab.active');
         if (activeTab) {
@@ -1609,6 +1612,22 @@ async function populateCounterInputs() {
     console.log('Counter inputs populated, total inputs:', counterInputs.querySelectorAll('input').length);
 }
 
+// Set current date/time in the reading datetime input
+function setCurrentDateTime() {
+    const datetimeInput = document.getElementById('reading-datetime');
+    if (datetimeInput) {
+        const now = new Date();
+        // Format as YYYY-MM-DDTHH:mm (required for datetime-local input)
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        
+        datetimeInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+}
+
 // Submit counter reading
 async function submitCounterReading() {
     const cashInRegister = parseFloat(document.getElementById('cash-in-register').value) || 0;
@@ -1683,6 +1702,10 @@ async function submitCounterReading() {
         config_id: currentConfigId
     });
     
+    // Get the reading date/time (use current if not set)
+    const readingDatetimeInput = document.getElementById('reading-datetime');
+    const readingDatetime = readingDatetimeInput.value || new Date().toISOString();
+    
     try {
         const response = await fetch('/api/counter-readings', {
             method: 'POST',
@@ -1693,7 +1716,8 @@ async function submitCounterReading() {
                 cash_in_register: cashInRegister,
                 notes: notes,
                 product_prices: productPrices,
-                config_id: currentConfigId  // Link to current configuration
+                config_id: currentConfigId,  // Link to current configuration
+                reading_date: readingDatetime  // Custom date/time
             })
         });
         
@@ -1706,9 +1730,10 @@ async function submitCounterReading() {
             alert(`Counter reading submitted successfully!\n${productsCalc}`);
             
             // DON'T clear counter inputs - they are cumulative totals
-            // Only clear cash and notes
+            // Only clear cash, notes, and reset datetime to current
             document.getElementById('cash-in-register').value = '';
             document.getElementById('counter-notes').value = '';
+            setCurrentDateTime();  // Reset to current time for next reading
             
             // Reload data and refresh counter inputs
             loadRecentReadings();

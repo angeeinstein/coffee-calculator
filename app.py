@@ -1257,6 +1257,11 @@ def submit_counter_reading():
         notes = data.get('notes', '')
         product_prices = data.get('product_prices', {})  # {productName: price}
         config_id = data.get('config_id')  # Link to configuration
+        reading_date = data.get('reading_date')  # Optional custom date/time
+        
+        # If no custom date provided, use current time
+        if not reading_date:
+            reading_date = datetime.now().isoformat()
         
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
@@ -1275,11 +1280,11 @@ def submit_counter_reading():
                 conn.close()
                 return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        # Insert new counter reading
+        # Insert new counter reading with custom date/time
         cursor.execute('''
-            INSERT INTO counter_readings (user_id, config_id, counter_data, cash_in_register, notes)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (current_user.id, config_id, json.dumps(counter_data), cash_in_register, notes))
+            INSERT INTO counter_readings (user_id, config_id, counter_data, cash_in_register, notes, reading_date)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (current_user.id, config_id, json.dumps(counter_data), cash_in_register, notes, reading_date))
         
         new_reading_id = cursor.lastrowid
         
@@ -1334,6 +1339,30 @@ def submit_counter_reading():
                     else:
                         # Log warning if no price found for product with sales
                         print(f"Warning: No price found for product '{product_name}' with {quantity_sold} units sold")
+        else:
+            # FIRST READING: Treat counter values as sales (assuming counters started at 0)
+            # This allows immediate revenue tracking from the first reading
+            for product_name, current_count in counter_data.items():
+                if current_count > 0:
+                    if product_name in product_prices:
+                        unit_price = product_prices[product_name]
+                        total_revenue = current_count * unit_price
+                        
+                        # Insert sales record with NULL start_reading_id (first reading scenario)
+                        cursor.execute('''
+                            INSERT INTO sales_records 
+                            (user_id, config_id, start_reading_id, end_reading_id, product_name, quantity_sold, unit_price, total_revenue)
+                            VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+                        ''', (current_user.id, config_id, new_reading_id, product_name, current_count, unit_price, total_revenue))
+                        
+                        sales_calculated.append({
+                            'product': product_name,
+                            'quantity': current_count,
+                            'revenue': total_revenue
+                        })
+                    else:
+                        # Log warning if no price found for product with sales
+                        print(f"Warning: No price found for product '{product_name}' with {current_count} units sold")
         
         conn.commit()
         conn.close()
