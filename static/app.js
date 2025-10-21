@@ -13,11 +13,275 @@ const ingredients = [
     'vanilla_syrup'
 ];
 
+// LocalStorage persistence functions
+function saveFormState() {
+    const formState = {
+        configId: currentConfigId,
+        configName: currentConfigName,
+        cleaningCost: document.getElementById('cleaning_cost').value,
+        productsPerDay: document.getElementById('products_per_day').value,
+        ingredients: {},
+        drinks: []
+    };
+    
+    // Save ingredient prices
+    ingredients.forEach(ing => {
+        const input = document.getElementById(ing);
+        if (input) {
+            formState.ingredients[ing] = input.value;
+        }
+    });
+    
+    // Save drinks
+    const drinksContainer = document.getElementById('drinks-container');
+    const drinkCards = drinksContainer.querySelectorAll('.drink-card');
+    drinkCards.forEach(drink => {
+        const drinkId = drink.id.split('-')[1];
+        const nameInput = document.getElementById(`drink-name-${drinkId}`);
+        const vendingPriceInput = document.getElementById(`vending-price-${drinkId}`);
+        
+        if (nameInput) {
+            const drinkData = {
+                name: nameInput.value,
+                vendingPrice: vendingPriceInput ? vendingPriceInput.value : '',
+                ingredients: [],
+                teaBags: [],
+                customItems: []
+            };
+            
+            // Save ingredients
+            const ingredientRows = drink.querySelectorAll('.ingredient-row');
+            ingredientRows.forEach(row => {
+                const select = row.querySelector('.ingredient-select');
+                const amountInput = row.querySelector('.ingredient-amount');
+                if (select && amountInput && select.value) {
+                    drinkData.ingredients.push({
+                        name: select.value,
+                        amount: amountInput.value
+                    });
+                }
+            });
+            
+            // Save tea bags
+            const teaBagRows = drink.querySelectorAll('.tea-bag-item');
+            teaBagRows.forEach(row => {
+                const select = row.querySelector('.tea-bag-select');
+                const quantityInput = row.querySelector('.tea-bag-quantity');
+                if (select && quantityInput && select.value) {
+                    drinkData.teaBags.push({
+                        name: select.value,
+                        quantity: quantityInput.value
+                    });
+                }
+            });
+            
+            // Save custom items
+            const customRows = drink.querySelectorAll('.custom-item-row');
+            customRows.forEach(row => {
+                const nameInput = row.querySelector('.custom-item-name');
+                const costInput = row.querySelector('.custom-item-cost');
+                if (nameInput && costInput && nameInput.value) {
+                    drinkData.customItems.push({
+                        name: nameInput.value,
+                        cost: costInput.value
+                    });
+                }
+            });
+            
+            formState.drinks.push(drinkData);
+        }
+    });
+    
+    localStorage.setItem('coffeeCalculatorFormState', JSON.stringify(formState));
+    console.log('Form state saved to localStorage');
+}
+
+function restoreFormState() {
+    const savedState = localStorage.getItem('coffeeCalculatorFormState');
+    if (!savedState) {
+        console.log('No saved form state found');
+        return false;
+    }
+    
+    try {
+        const formState = JSON.parse(savedState);
+        console.log('Restoring form state:', formState);
+        
+        // Restore config info
+        if (formState.configId) {
+            currentConfigId = formState.configId;
+            currentConfigName = formState.configName;
+            document.getElementById('current-config').style.display = 'block';
+            document.getElementById('current-config-name').textContent = formState.configName;
+        }
+        
+        // Restore fixed costs
+        if (formState.cleaningCost) {
+            document.getElementById('cleaning_cost').value = formState.cleaningCost;
+        }
+        if (formState.productsPerDay) {
+            document.getElementById('products_per_day').value = formState.productsPerDay;
+        }
+        
+        // Restore ingredient prices
+        if (formState.ingredients) {
+            ingredients.forEach(ing => {
+                const input = document.getElementById(ing);
+                if (input && formState.ingredients[ing]) {
+                    input.value = formState.ingredients[ing];
+                }
+            });
+        }
+        
+        // Restore drinks
+        if (formState.drinks && formState.drinks.length > 0) {
+            // Clear existing drinks first
+            document.getElementById('drinks-container').innerHTML = '';
+            drinkCounter = 0;
+            
+            formState.drinks.forEach(drinkData => {
+                addDrink();
+                const drinkId = drinkCounter;
+                
+                // Restore drink name
+                const nameInput = document.getElementById(`drink-name-${drinkId}`);
+                if (nameInput) {
+                    nameInput.value = drinkData.name || '';
+                }
+                
+                // Restore vending price
+                const vendingPriceInput = document.getElementById(`vending-price-${drinkId}`);
+                if (vendingPriceInput && drinkData.vendingPrice) {
+                    vendingPriceInput.value = drinkData.vendingPrice;
+                }
+                
+                // Clear default ingredient row
+                const ingredientsContainer = document.getElementById(`ingredients-${drinkId}`);
+                ingredientsContainer.innerHTML = '';
+                
+                // Restore ingredients
+                if (drinkData.ingredients) {
+                    drinkData.ingredients.forEach(ing => {
+                        const unit = getUnitForIngredient(ing.name);
+                        const row = document.createElement('div');
+                        row.className = 'ingredient-row';
+                        row.innerHTML = `
+                            <div class="input-group">
+                                <label>Ingredient</label>
+                                <select class="ingredient-select" onchange="updateUnitLabel(this)">
+                                    <option value="">Select ingredient</option>
+                                    ${ingredients.map(ingr => `<option value="${ingr}" ${ing.name === ingr ? 'selected' : ''}>${ingr.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label class="amount-label">Amount (${unit})</label>
+                                <input type="number" class="ingredient-amount" step="0.1" min="0" placeholder="0.0" value="${ing.amount}" />
+                            </div>
+                            <button class="btn btn-danger" onclick="removeIngredientRow(this)" style="margin-top: 25px;">✕</button>
+                        `;
+                        ingredientsContainer.appendChild(row);
+                    });
+                }
+                
+                // Restore tea bags
+                if (drinkData.teaBags && drinkData.teaBags.length > 0) {
+                    const teaBagContainer = document.getElementById(`tea-bags-${drinkId}`);
+                    drinkData.teaBags.forEach(teaBag => {
+                        addTeaBagToDrink(drinkId);
+                        const teaBagItems = teaBagContainer.querySelectorAll('.tea-bag-item');
+                        const lastItem = teaBagItems[teaBagItems.length - 1];
+                        if (lastItem) {
+                            const select = lastItem.querySelector('.tea-bag-select');
+                            const quantityInput = lastItem.querySelector('.tea-bag-quantity');
+                            if (select) select.value = teaBag.name;
+                            if (quantityInput) quantityInput.value = teaBag.quantity;
+                        }
+                    });
+                }
+                
+                // Restore custom items
+                if (drinkData.customItems && drinkData.customItems.length > 0) {
+                    const customContainer = document.getElementById(`custom-items-${drinkId}`);
+                    drinkData.customItems.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'custom-item-row';
+                        div.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px;';
+                        div.innerHTML = `
+                            <input type="text" placeholder="Item name" class="custom-item-name" value="${escapeHtml(item.name)}" style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <input type="number" placeholder="Cost (€)" class="custom-item-cost" value="${item.cost}" step="0.01" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <button onclick="this.parentElement.remove()" style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">✕</button>
+                        `;
+                        customContainer.appendChild(div);
+                    });
+                }
+            });
+        }
+        
+        // Reload configurations to update active state
+        loadConfigurations();
+        
+        return true;
+    } catch (error) {
+        console.error('Error restoring form state:', error);
+        return false;
+    }
+}
+
+function clearFormState() {
+    localStorage.removeItem('coffeeCalculatorFormState');
+    console.log('Form state cleared from localStorage');
+}
+
+// Auto-save form state on input changes
+function setupAutoSave() {
+    // Debounce function to avoid too frequent saves
+    let saveTimeout;
+    const debouncedSave = () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(saveFormState, 500);
+    };
+    
+    // Add event listeners to main form elements
+    document.getElementById('cleaning_cost').addEventListener('input', debouncedSave);
+    document.getElementById('products_per_day').addEventListener('input', debouncedSave);
+    
+    ingredients.forEach(ing => {
+        const input = document.getElementById(ing);
+        if (input) {
+            input.addEventListener('input', debouncedSave);
+        }
+    });
+    
+    // Observer for drinks container (captures dynamic elements)
+    const drinksContainer = document.getElementById('drinks-container');
+    const observer = new MutationObserver(debouncedSave);
+    observer.observe(drinksContainer, { 
+        childList: true, 
+        subtree: true, 
+        attributes: false,
+        characterData: true 
+    });
+    
+    // Save on input events within drinks container
+    drinksContainer.addEventListener('input', debouncedSave);
+    drinksContainer.addEventListener('change', debouncedSave);
+}
+
 // Initialize with one drink and load configurations
 document.addEventListener('DOMContentLoaded', function() {
-    addDrink();
+    // Try to restore previous state first
+    const restored = restoreFormState();
+    
+    // If no state was restored, add a default drink
+    if (!restored) {
+        addDrink();
+    }
+    
     loadConfigurations();
     loadTeaBags();
+    
+    // Setup auto-save
+    setupAutoSave();
     
     // Initialize sales tracking if user is logged in
     const salesTrackingSection = document.getElementById('sales-tracking-section');
@@ -554,6 +818,9 @@ function displayConfigurations(configs) {
 
 async function loadConfiguration(configId) {
     try {
+        // Clear localStorage when loading a different config
+        clearFormState();
+        
         const response = await fetch(`/api/configs/${configId}`, {
             credentials: 'include'
         });
@@ -727,6 +994,9 @@ async function loadConfiguration(configId) {
             document.getElementById('results').classList.add('hidden');
             document.getElementById('download-pdf-btn').classList.add('hidden');
             
+            // Save the newly loaded config state to localStorage
+            saveFormState();
+            
         } else {
             alert('Error loading configuration: ' + result.error);
         }
@@ -803,6 +1073,9 @@ async function saveConfiguration() {
             closeSaveModal();
             loadConfigurations();
             
+            // Save to localStorage after successful save
+            saveFormState();
+            
             alert('Configuration saved successfully!');
         } else {
             alert('Error saving configuration: ' + result.error);
@@ -845,6 +1118,9 @@ async function deleteConfiguration(configId) {
 
 function newConfiguration() {
     if (confirm('This will clear the current configuration. Continue?')) {
+        // Clear localStorage
+        clearFormState();
+        
         currentConfigId = null;
         currentConfigName = null;
         document.getElementById('current-config').style.display = 'none';
@@ -872,6 +1148,9 @@ function newConfiguration() {
         document.getElementById('download-pdf-btn').classList.add('hidden');
         
         loadConfigurations();
+        
+        // Save the new empty state
+        saveFormState();
     }
 }
 
