@@ -1450,30 +1450,61 @@ def get_cash_register_balance():
         reading_id = latest_reading[0]
         reading_config_id = latest_reading[3]
         
-        # Calculate total sales revenue since last reading
+        # Calculate total sales revenue from ALL counter readings up to this one
+        # This gives us total revenue from products sold
         cursor.execute('''
             SELECT COALESCE(SUM(total_revenue), 0)
             FROM sales_records
-            WHERE end_reading_id = ?
+            WHERE end_reading_id <= ?
         ''', (reading_id,))
         
         total_sales = cursor.fetchone()[0]
         
-        # CORRECTED LOGIC:
-        # Since withdrawals/deposits auto-update the actual cash via new readings,
-        # the latest reading's cash amount ALREADY includes all money movements.
-        # 
-        # Expected cash = actual cash from latest reading (which is correct baseline)
-        # The difference should ONLY show discrepancies from manual counter vs system calculation
-        #
-        # If there are sales calculated but not yet in a new reading, expected > actual
-        # If actual cash was manually counted and differs, there's a real discrepancy
+        # Calculate withdrawals and deposits from ALL time (not just since last reading)
+        if reading_config_id:
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+                FROM cash_register_events
+                WHERE config_id = ? AND event_date <= ?
+            ''', (reading_config_id, last_reading_date))
+        else:
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(CASE WHEN event_type = 'withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
+                    COALESCE(SUM(CASE WHEN event_type = 'deposit' THEN amount ELSE 0 END), 0) as deposits
+                FROM cash_register_events
+                WHERE user_id = ? AND event_date <= ? AND config_id IS NULL
+            ''', (current_user.id, last_reading_date))
         
-        # For now, with auto-updates: Expected should equal Actual
-        # Difference shows if you need to submit a new counter reading with sales
-        expected_cash = actual_cash + total_sales
+        cash_events = cursor.fetchone()
+        withdrawals = cash_events[0]
+        deposits = cash_events[1]
         
-        # Difference: negative means you haven't deposited sales yet, positive means extra cash
+        # Get the FIRST reading to use as starting cash
+        if reading_config_id:
+            cursor.execute('''
+                SELECT cash_in_register
+                FROM counter_readings
+                WHERE config_id = ?
+                ORDER BY reading_date ASC
+                LIMIT 1
+            ''', (reading_config_id,))
+        else:
+            cursor.execute('''
+                SELECT cash_in_register
+                FROM counter_readings
+                WHERE user_id = ? AND config_id IS NULL
+                ORDER BY reading_date ASC
+                LIMIT 1
+            ''', (current_user.id,))
+        
+        first_reading = cursor.fetchone()
+        starting_cash = first_reading[0] if first_reading else 0
+        
+        # CORRECT FORMULA: Expected = Starting Cash + Sales Revenue - Withdrawals + Deposits
+        expected_cash = starting_cash + total_sales - withdrawals + deposits
         difference = actual_cash - expected_cash
         
         conn.close()
@@ -1483,9 +1514,10 @@ def get_cash_register_balance():
             'actual_cash': round(actual_cash, 2),
             'expected_cash': round(expected_cash, 2),
             'difference': round(difference, 2),
-            'withdrawals': 0,
-            'deposits': 0,
+            'withdrawals': round(withdrawals, 2),
+            'deposits': round(deposits, 2),
             'total_sales': round(total_sales, 2),
+            'starting_cash': round(starting_cash, 2),
             'last_reading_date': last_reading_date
         })
     
@@ -1611,6 +1643,81 @@ def record_cash_event():
             'success': True,
             'message': f'{event_type.capitalize()} recorded and cash register updated automatically'
         })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/cash-register/events/<int:event_id>', methods=['DELETE'])
+@login_required
+def delete_cash_event(event_id):
+    """Delete a cash register event and its associated auto-created reading"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get the event details
+        cursor.execute('''
+            SELECT user_id, config_id, event_type, amount, event_date
+            FROM cash_register_events
+            WHERE id = ?
+        ''', (event_id,))
+        
+        event = cursor.fetchone()
+        
+        if not event:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Event not found'}), 404
+        
+        event_user_id, event_config_id, event_type, amount, event_date = event
+        
+        # Check permissions
+        if event_config_id:
+            # Check if user owns config or has edit access
+            cursor.execute('''
+                SELECT id FROM configurations WHERE id = ? AND user_id = ?
+                UNION
+                SELECT c.id FROM configurations c
+                JOIN shared_configs sc ON c.id = sc.config_id
+                WHERE c.id = ? AND sc.shared_with_user_id = ? AND sc.can_edit = 1
+            ''', (event_config_id, current_user.id, event_config_id, current_user.id))
+            
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'success': False, 'error': 'Permission denied'}), 403
+        elif event_user_id != current_user.id:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Permission denied'}), 403
+        
+        # Find and delete the auto-created reading (if it has the auto-note)
+        note_pattern = f"%Auto-updated after {event_type}%"
+        
+        if event_config_id:
+            cursor.execute('''
+                DELETE FROM counter_readings
+                WHERE config_id = ? 
+                AND reading_date >= ? 
+                AND notes LIKE ?
+                ORDER BY reading_date ASC
+                LIMIT 1
+            ''', (event_config_id, event_date, note_pattern))
+        else:
+            cursor.execute('''
+                DELETE FROM counter_readings
+                WHERE user_id = ? 
+                AND config_id IS NULL
+                AND reading_date >= ? 
+                AND notes LIKE ?
+                ORDER BY reading_date ASC
+                LIMIT 1
+            ''', (event_user_id, event_date, note_pattern))
+        
+        # Delete the event itself
+        cursor.execute('DELETE FROM cash_register_events WHERE id = ?', (event_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Cash event and associated reading deleted'})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400

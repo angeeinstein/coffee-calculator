@@ -1941,18 +1941,54 @@ function displayCashEvents(events) {
         const icon = event.event_type === 'withdrawal' ? '💸' : '💵';
         
         return `
-            <div class="event-item ${event.event_type}">
-                <div>
+            <div class="event-item ${event.event_type}" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
                     <strong>${icon} ${event.event_type.charAt(0).toUpperCase() + event.event_type.slice(1)}</strong><br>
                     <span style="color: #666;">${date}</span><br>
                     <em>${escapeHtml(event.description)}</em>
                 </div>
-                <div style="font-size: 1.5em; font-weight: bold; color: ${event.event_type === 'withdrawal' ? '#e74c3c' : '#27ae60'};">
-                    ${event.event_type === 'withdrawal' ? '-' : '+'}€${event.amount.toFixed(2)}
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="font-size: 1.5em; font-weight: bold; color: ${event.event_type === 'withdrawal' ? '#e74c3c' : '#27ae60'};">
+                        ${event.event_type === 'withdrawal' ? '-' : '+'}€${event.amount.toFixed(2)}
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteCashEvent(${event.id})" style="padding: 5px 10px; font-size: 0.85em;">
+                        🗑️ Delete
+                    </button>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+// Delete cash event
+async function deleteCashEvent(eventId) {
+    if (!confirm('Delete this cash event? This will also remove the associated auto-created reading.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/cash-register/events/${eventId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(data.message);
+            
+            // Reload all data
+            loadCashEvents();
+            loadCashRegisterBalance();
+            loadRecentReadings();
+            populateCounterInputs();
+        } else {
+            alert(data.error || 'Failed to delete event');
+        }
+    } catch (error) {
+        console.error('Error deleting cash event:', error);
+        alert('Network error. Please try again.');
+    }
 }
 
 // Load sales statistics
