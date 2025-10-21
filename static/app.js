@@ -289,23 +289,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Set current date/time for counter reading
         setCurrentDateTime();
         
-        // Check which tab is active and load appropriate data
-        const activeTab = document.querySelector('.tab.active');
-        if (activeTab) {
-            const tabName = activeTab.textContent.toLowerCase().includes('counter') ? 'counter' :
-                           activeTab.textContent.toLowerCase().includes('register') ? 'register' :
-                           'statistics';
-            
-            if (tabName === 'counter') {
-                populateCounterInputs();
-                loadRecentReadings();
-            } else if (tabName === 'register') {
-                loadCashRegisterBalance();
-                loadCashEvents();
-            } else if (tabName === 'statistics') {
-                loadSalesStatistics();
-            }
-        }
+        // Always load counter data on page load (default tab)
+        populateCounterInputs();
+        loadRecentReadings();
+        
+        // Note: Other tabs (register, statistics) will load when switched to
     }
 });
 
