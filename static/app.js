@@ -240,7 +240,7 @@ function setupAutoSave() {
     
     const debouncedSave = () => {
         clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(saveFormState, 500);
+        saveTimeout = setTimeout(saveFormState, 300);
     };
     
     const debouncedCalc = () => {
@@ -251,7 +251,7 @@ function setupAutoSave() {
             if (drinksContainer && drinksContainer.querySelectorAll('.drink-card').length > 0) {
                 calculateCosts();
             }
-        }, 800); // Slightly longer delay for calculations
+        }, 400); // Faster calculation delay for instant feel
     };
     
     const handleChange = () => {
@@ -283,6 +283,21 @@ function setupAutoSave() {
     // Save and calculate on input events within drinks container
     drinksContainer.addEventListener('input', handleChange);
     drinksContainer.addEventListener('change', handleChange);
+    
+    // Also watch tea bags container
+    const teaBagInputs = document.getElementById('tea-bag-inputs');
+    if (teaBagInputs) {
+        teaBagInputs.addEventListener('input', handleChange);
+        teaBagInputs.addEventListener('change', handleChange);
+        
+        const teaObserver = new MutationObserver(handleChange);
+        teaObserver.observe(teaBagInputs, {
+            childList: true,
+            subtree: true,
+            attributes: false,
+            characterData: true
+        });
+    }
 }
 
 // Initialize with one drink and load configurations
@@ -1005,11 +1020,11 @@ async function loadConfiguration(configId) {
             // Reload configurations to update active state
             loadConfigurations();
             
-            // Update counter inputs if the sales tracking tab is visible
-            const salesTrackingSection = document.getElementById('sales-tracking-section');
-            if (salesTrackingSection && !salesTrackingSection.classList.contains('hidden')) {
-                populateCounterInputs();
-            }
+            // Update all sales data when configuration is switched
+            populateCounterInputs();
+            loadRecentReadings();
+            loadCashRegisterBalance();
+            loadCashEvents();
             
             // Clear results
             calculationResults = null;
@@ -1572,8 +1587,6 @@ function switchTab(tabName) {
 
 // Switch main tabs (Overview, Drinks, Sales)
 function switchMainTab(tabName) {
-    console.log('Switching to main tab:', tabName);
-    
     // Update tab buttons - target only the main navigation tabs
     const mainTabs = document.querySelectorAll('.content > .tabs:first-of-type .tab');
     mainTabs.forEach(tab => tab.classList.remove('active'));
@@ -1582,21 +1595,16 @@ function switchMainTab(tabName) {
     // Update tab content
     document.querySelectorAll('.main-tab-content').forEach(content => {
         content.classList.remove('active');
-        console.log('Hiding tab:', content.id);
     });
     
     const targetTab = document.getElementById(`main-tab-${tabName}`);
     if (targetTab) {
         targetTab.classList.add('active');
-        console.log('Showing tab:', targetTab.id);
-    } else {
-        console.error('Tab not found:', `main-tab-${tabName}`);
     }
     
     // Load appropriate data when switching
     if (tabName === 'sales') {
-        console.log('Loading sales data...');
-        // Load sales tracking data (already loaded on page init, but refresh)
+        // Load sales tracking data
         populateCounterInputs();
         loadRecentReadings();
         loadCashRegisterBalance();
