@@ -690,10 +690,12 @@
             padding: 20px;
             background: white;
             border-radius: 12px;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
 
         .main-tab-content.active {
-            display: block;
+            display: block !important;
         }
 
         .stats-grid {
@@ -872,7 +874,10 @@
             <!-- Drinks Configuration Tab -->
             <div id="main-tab-drinks" class="main-tab-content" style="display: none;">
             
-            <p style="color: red; font-size: 20px; padding: 20px; background: yellow;">DRINKS TAB CONTENT HERE</p>
+            <div style="color: red; font-size: 30px; padding: 40px; background: yellow; border: 5px solid red; margin: 20px; position: relative; z-index: 9999;">
+                ⚠️ DRINKS TAB CONTENT HERE ⚠️
+                <br>If you see this, the tab is working!
+            </div>
 
             <!-- Fixed Costs Section -->
             <div class="section">
