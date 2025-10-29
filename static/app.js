@@ -1572,16 +1572,30 @@ function switchTab(tabName) {
 
 // Switch main tabs (Overview, Drinks, Sales)
 function switchMainTab(tabName) {
-    // Update tab buttons
-    document.querySelectorAll('.tabs:first-of-type .tab').forEach(tab => tab.classList.remove('active'));
+    console.log('Switching to main tab:', tabName);
+    
+    // Update tab buttons - target only the main navigation tabs
+    const mainTabs = document.querySelectorAll('.content > .tabs:first-of-type .tab');
+    mainTabs.forEach(tab => tab.classList.remove('active'));
     event.target.classList.add('active');
     
     // Update tab content
-    document.querySelectorAll('.main-tab-content').forEach(content => content.classList.remove('active'));
-    document.getElementById(`main-tab-${tabName}`).classList.add('active');
+    document.querySelectorAll('.main-tab-content').forEach(content => {
+        content.classList.remove('active');
+        console.log('Hiding tab:', content.id);
+    });
+    
+    const targetTab = document.getElementById(`main-tab-${tabName}`);
+    if (targetTab) {
+        targetTab.classList.add('active');
+        console.log('Showing tab:', targetTab.id);
+    } else {
+        console.error('Tab not found:', `main-tab-${tabName}`);
+    }
     
     // Load appropriate data when switching
     if (tabName === 'sales') {
+        console.log('Loading sales data...');
         // Load sales tracking data (already loaded on page init, but refresh)
         populateCounterInputs();
         loadRecentReadings();
