@@ -313,6 +313,17 @@
             transition: border-color 0.3s;
             width: 100%;
             box-sizing: border-box;
+            min-height: 44px; /* iOS recommended touch target size */
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        /* Prevent iOS zoom on input focus */
+        @supports (-webkit-touch-callout: none) {
+            .input-group input,
+            .input-group select {
+                font-size: max(16px, 1em);
+            }
         }
 
         .input-group input:focus,
@@ -334,6 +345,10 @@
             margin-top: 8px;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
+            min-height: 44px; /* iOS recommended touch target size */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .btn:hover,
@@ -463,6 +478,17 @@
             display: none;
         }
 
+        /* Table container for horizontal scrolling on mobile */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 10px 0;
+        }
+
+        .table-container table {
+            min-width: 100%;
+        }
+
         .current-config-name {
             background: #f8f9fa;
             padding: 10px 15px;
@@ -493,36 +519,76 @@
 
         @media (max-width: 768px) {
             body {
-                padding: 10px;
+                padding: 5px;
             }
 
             header {
-                padding: 20px 15px;
+                padding: 15px 10px;
+                padding-top: 50px; /* Space for user menu */
             }
 
             header h1 {
-                font-size: 1.8em;
+                font-size: 1.5em;
             }
 
             header p {
-                font-size: 0.95em;
+                font-size: 0.9em;
+            }
+
+            .user-menu {
+                top: 10px;
+                right: 10px;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 5px;
+            }
+
+            .user-info {
+                font-size: 0.8em;
+            }
+
+            .logout-btn {
+                padding: 5px 10px;
+                font-size: 0.8em;
             }
 
             .content {
-                padding: 15px;
+                padding: 10px;
+            }
+
+            .tabs {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+                margin-bottom: 15px !important;
+            }
+
+            .tab {
+                flex: 1 1 calc(50% - 5px);
+                min-width: 120px;
+                padding: 10px 8px;
+                font-size: 0.85em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .main-tab-content {
+                padding: 10px;
             }
 
             .section {
-                margin-bottom: 30px;
+                margin-bottom: 20px;
             }
 
             .section h2 {
-                font-size: 1.5em;
+                font-size: 1.3em;
+                margin-bottom: 12px;
             }
 
             .ingredient-grid {
                 grid-template-columns: 1fr;
-                gap: 12px;
+                gap: 10px;
             }
 
             .ingredient-row {
@@ -536,114 +602,250 @@
             }
 
             .drink-card {
-                padding: 15px;
+                padding: 12px;
+                margin-bottom: 15px;
             }
 
             .drink-header {
                 flex-direction: column;
                 align-items: stretch;
+                gap: 10px;
             }
 
             .drink-header input {
                 margin-right: 0;
-                margin-bottom: 10px;
+                margin-bottom: 0;
+                width: 100%;
+            }
+
+            .drink-header button {
+                width: 100%;
             }
 
             .action-buttons {
                 flex-direction: column;
+                gap: 8px;
             }
 
             .btn {
                 width: 100%;
+                padding: 12px;
+                font-size: 0.95em;
             }
 
             .sidebar {
-                padding: 15px;
+                padding: 12px;
             }
 
             .sidebar h2 {
-                font-size: 1.3em;
-            }
-
-            .modal-content {
-                width: 90%;
-                margin: 30% auto;
-                padding: 20px;
-            }
-
-            .results-section {
-                padding: 15px;
-            }
-
-            .result-card {
-                padding: 15px;
-            }
-
-            .result-card h3 {
                 font-size: 1.2em;
             }
 
-            .result-total {
-                font-size: 1.5em;
+            .sidebar-actions {
+                flex-direction: column;
+                gap: 8px;
             }
 
-            .breakdown-table {
-                font-size: 0.9em;
+            .sidebar-btn {
+                width: 100%;
             }
 
-            .breakdown-table th,
-            .breakdown-table td {
-                padding: 8px 5px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            header h1 {
-                font-size: 1.5em;
-            }
-
-            header p {
-                font-size: 0.9em;
-            }
-
-            .section h2 {
-                font-size: 1.3em;
-            }
-
-            .btn {
-                padding: 10px 20px;
-                font-size: 0.95em;
-            }
-
-            .input-group label {
-                font-size: 0.9em;
-            }
-
-            .input-group input,
-            .input-group select {
-                padding: 10px;
-                font-size: 0.95em;
-            }
-
-            .breakdown-table {
-                font-size: 0.85em;
-            }
-
-            .breakdown-table th,
-            .breakdown-table td {
-                padding: 6px 3px;
+            .config-list {
+                max-height: 300px;
             }
 
             .config-item {
                 padding: 10px;
             }
 
+            .config-actions {
+                flex-wrap: wrap;
+                gap: 5px;
+            }
+
+            .modal-content {
+                width: 90%;
+                margin: 20% auto;
+                padding: 20px;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+
+            .modal-actions {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .results-section {
+                padding: 12px;
+            }
+
+            .result-card {
+                padding: 12px;
+                margin-bottom: 12px;
+            }
+
+            .result-card h3 {
+                font-size: 1.1em;
+            }
+
+            .result-total {
+                font-size: 1.4em;
+            }
+
+            .breakdown-table {
+                font-size: 0.85em;
+                overflow-x: auto;
+                display: block;
+            }
+
+            .breakdown-table th,
+            .breakdown-table td {
+                padding: 6px 4px;
+            }
+
+            /* Sales tracking mobile adjustments */
+            .sales-grid {
+                grid-template-columns: 1fr !important;
+                gap: 15px;
+            }
+
+            .counter-inputs-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .sales-tabs {
+                flex-wrap: wrap;
+            }
+
+            .sales-tab {
+                flex: 1 1 calc(50% - 5px);
+                font-size: 0.85em;
+                padding: 8px;
+            }
+
+            table {
+                font-size: 0.85em;
+            }
+
+            table th,
+            table td {
+                padding: 6px 4px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 3px;
+            }
+
+            header h1 {
+                font-size: 1.3em;
+            }
+
+            header p {
+                font-size: 0.8em;
+            }
+
+            .section h2 {
+                font-size: 1.1em;
+            }
+
+            .tab {
+                font-size: 0.75em;
+                padding: 8px 6px;
+            }
+
+            .btn {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+
+            .input-group label {
+                font-size: 0.85em;
+            }
+
+            .input-group input,
+            .input-group select {
+                padding: 8px;
+                font-size: 0.9em;
+            }
+
+            .breakdown-table {
+                font-size: 0.75em;
+            }
+
+            .breakdown-table th,
+            .breakdown-table td {
+                padding: 4px 2px;
+            }
+
+            .config-item {
+                padding: 8px;
+            }
+
             .config-name {
-                font-size: 0.95em;
+                font-size: 0.9em;
             }
 
             .config-date {
-                font-size: 0.7em;
+                font-size: 0.65em;
+            }
+
+            .drink-card {
+                padding: 10px;
+            }
+
+            .result-card {
+                padding: 10px;
+            }
+
+            .result-card h3 {
+                font-size: 1em;
+            }
+
+            .result-total {
+                font-size: 1.2em;
+            }
+
+            .modal-content {
+                width: 95%;
+                padding: 15px;
+                margin: 10% auto;
+            }
+
+            .modal h3 {
+                font-size: 1.2em;
+            }
+
+            table {
+                font-size: 0.75em;
+            }
+
+            table th,
+            table td {
+                padding: 4px 2px;
+            }
+
+            /* Make tables scrollable horizontally on very small screens */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* Adjust sales tracking for small screens */
+            .sales-tab {
+                font-size: 0.75em;
+                padding: 6px;
+            }
+
+            .user-menu {
+                font-size: 0.75em;
+            }
+
+            .logout-btn {
+                padding: 4px 8px;
+                font-size: 0.75em;
             }
         }
 
@@ -653,6 +855,8 @@
             gap: 10px;
             margin-bottom: 20px;
             border-bottom: 2px solid #e9ecef;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .tab {
@@ -665,6 +869,13 @@
             font-weight: 600;
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            min-height: 44px; /* iOS recommended touch target size */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
         }
 
         .tab:hover {
@@ -696,6 +907,23 @@
 
         .main-tab-content.active {
             display: block !important;
+        }
+
+        /* Mobile-specific adjustments for main tab content */
+        @media (max-width: 768px) {
+            .main-tab-content {
+                padding: 12px;
+                margin-top: 10px;
+                border-radius: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main-tab-content {
+                padding: 8px;
+                margin-top: 8px;
+                min-height: 300px;
+            }
         }
 
         .stats-grid {
