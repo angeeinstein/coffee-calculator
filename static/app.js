@@ -232,29 +232,47 @@ function clearFormState() {
     console.log('Form state cleared from localStorage');
 }
 
-// Auto-save form state on input changes
+// Auto-save form state on input changes AND auto-calculate
 function setupAutoSave() {
-    // Debounce function to avoid too frequent saves
+    // Debounce function to avoid too frequent saves and calculations
     let saveTimeout;
+    let calcTimeout;
+    
     const debouncedSave = () => {
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(saveFormState, 500);
     };
     
+    const debouncedCalc = () => {
+        clearTimeout(calcTimeout);
+        calcTimeout = setTimeout(() => {
+            // Auto-calculate if we have drinks
+            const drinksContainer = document.getElementById('drinks-container');
+            if (drinksContainer && drinksContainer.querySelectorAll('.drink-card').length > 0) {
+                calculateCosts();
+            }
+        }, 800); // Slightly longer delay for calculations
+    };
+    
+    const handleChange = () => {
+        debouncedSave();
+        debouncedCalc();
+    };
+    
     // Add event listeners to main form elements
-    document.getElementById('cleaning_cost').addEventListener('input', debouncedSave);
-    document.getElementById('products_per_day').addEventListener('input', debouncedSave);
+    document.getElementById('cleaning_cost').addEventListener('input', handleChange);
+    document.getElementById('products_per_day').addEventListener('input', handleChange);
     
     ingredients.forEach(ing => {
         const input = document.getElementById(ing);
         if (input) {
-            input.addEventListener('input', debouncedSave);
+            input.addEventListener('input', handleChange);
         }
     });
     
     // Observer for drinks container (captures dynamic elements)
     const drinksContainer = document.getElementById('drinks-container');
-    const observer = new MutationObserver(debouncedSave);
+    const observer = new MutationObserver(handleChange);
     observer.observe(drinksContainer, { 
         childList: true, 
         subtree: true, 
@@ -262,9 +280,9 @@ function setupAutoSave() {
         characterData: true 
     });
     
-    // Save on input events within drinks container
-    drinksContainer.addEventListener('input', debouncedSave);
-    drinksContainer.addEventListener('change', debouncedSave);
+    // Save and calculate on input events within drinks container
+    drinksContainer.addEventListener('input', handleChange);
+    drinksContainer.addEventListener('change', handleChange);
 }
 
 // Initialize with one drink and load configurations
@@ -280,20 +298,30 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConfigurations();
     loadTeaBags();
     
-    // Setup auto-save
+    // Setup auto-save and auto-calculate
     setupAutoSave();
     
+    // Initial calculation if drinks exist
+    setTimeout(() => {
+        const drinksContainer = document.getElementById('drinks-container');
+        if (drinksContainer && drinksContainer.querySelectorAll('.drink-card').length > 0) {
+            calculateCosts();
+        }
+    }, 500);
+    
     // Initialize sales tracking if user is logged in
-    const salesTrackingSection = document.getElementById('sales-tracking-section');
-    if (salesTrackingSection && !salesTrackingSection.classList.contains('hidden')) {
+    const salesTrackingSection = document.getElementById('main-tab-sales');
+    if (salesTrackingSection) {
         // Set current date/time for counter reading
         setCurrentDateTime();
         
-        // Always load counter data on page load (default tab)
+        // Always load all sales data on page load
         populateCounterInputs();
         loadRecentReadings();
+        loadCashRegisterBalance();
+        loadCashEvents();
         
-        // Note: Other tabs (register, statistics) will load when switched to
+        // Note: Statistics will load when switched to that tab
     }
 });
 
@@ -555,12 +583,15 @@ async function calculateCosts() {
                 results: result.results
             };
             displayResults(result.results);
-            document.getElementById('download-pdf-btn').classList.remove('hidden');
             
-            // Refresh counter inputs if on counter reading tab
-            if (document.getElementById('tab-counter') && document.getElementById('tab-counter').classList.contains('active')) {
-                populateCounterInputs();
+            // Show PDF download button
+            const pdfBtn = document.getElementById('download-pdf-btn');
+            if (pdfBtn) {
+                pdfBtn.style.display = 'inline-block';
             }
+            
+            // Refresh counter inputs if sales tracking exists
+            populateCounterInputs();
         } else {
             alert('Error calculating costs: ' + result.error);
         }
@@ -1536,6 +1567,26 @@ function switchTab(tabName) {
         loadCashEvents();
     } else if (tabName === 'statistics') {
         loadSalesStatistics();
+    }
+}
+
+// Switch main tabs (Overview, Drinks, Sales)
+function switchMainTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.tabs:first-of-type .tab').forEach(tab => tab.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.main-tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`main-tab-${tabName}`).classList.add('active');
+    
+    // Load appropriate data when switching
+    if (tabName === 'sales') {
+        // Load sales tracking data (already loaded on page init, but refresh)
+        populateCounterInputs();
+        loadRecentReadings();
+        loadCashRegisterBalance();
+        loadCashEvents();
     }
 }
 

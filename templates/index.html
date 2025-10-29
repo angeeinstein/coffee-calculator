@@ -684,6 +684,14 @@
             display: block;
         }
 
+        .main-tab-content {
+            display: none;
+        }
+
+        .main-tab-content.active {
+            display: block;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -834,6 +842,32 @@
             </header>
 
             <div class="content">
+            
+            <!-- Main Navigation Tabs -->
+            <div class="tabs" style="margin-bottom: 25px;">
+                <button class="tab active" onclick="switchMainTab('overview')">📊 Overview</button>
+                <button class="tab" onclick="switchMainTab('drinks')">☕ Drinks</button>
+                <button class="tab" onclick="switchMainTab('sales')">💰 Sales Tracking</button>
+            </div>
+
+            <!-- Overview Tab -->
+            <div id="main-tab-overview" class="main-tab-content active">
+                
+            <!-- Results Section (now at top) -->
+            <div id="results" class="results-section">
+                <h2 style="color: #667eea; margin-bottom: 20px;">📊 Cost Breakdown</h2>
+                <div id="results-container">
+                    <p style="color: #999; text-align: center; padding: 40px;">Configure your drinks to see cost calculations</p>
+                </div>
+                
+                <button class="btn btn-secondary" onclick="downloadPDF()" id="download-pdf-btn" style="margin-top: 20px; display: none;">📄 Download PDF Report</button>
+            </div>
+
+            </div><!-- End Overview Tab -->
+
+            <!-- Drinks Configuration Tab -->
+            <div id="main-tab-drinks" class="main-tab-content" style="display: none;">
+                
             <!-- Fixed Costs Section -->
             <div class="section">
                 <h2>🧹 Fixed Daily Costs</h2>
@@ -902,13 +936,11 @@
                 <button class="btn" onclick="addDrink()">+ Add New Drink</button>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="action-buttons">
-                <button class="btn" onclick="calculateCosts()">💰 Calculate Costs</button>
-                <button class="btn btn-secondary hidden" id="download-pdf-btn" onclick="downloadPDF()">📄 Download PDF Report</button>
-            </div>
+            </div><!-- End Drinks Tab -->
 
-            <!-- Sales Tracking Section -->
+            <!-- Sales Tracking Tab -->
+            <div id="main-tab-sales" class="main-tab-content" style="display: none;">
+            
             <div class="section">
                 <h2>📊 Sales Tracking & Cash Register</h2>
                 
@@ -1045,14 +1077,11 @@
                 </div>
             </div>
 
-            <!-- Results Section -->
-            <div id="results" class="results-section hidden">
-                <h2 style="color: #667eea; margin-bottom: 20px;">📊 Cost Breakdown</h2>
-                <div id="results-container"></div>
-            </div>
-        </div>
-    </div>
-    </div>
+            </div><!-- End Sales Tracking Tab -->
+
+        </div><!-- End content -->
+    </div><!-- End container -->
+    </div><!-- End app-wrapper -->
 
     <!-- Save Configuration Modal -->
     <div id="saveModal" class="modal">
